@@ -24,7 +24,7 @@ import sys
 import time
 import traceback as traceback_module
 from collections import deque
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -48,6 +48,7 @@ else:
 
 from powercontext._logging import log_safely
 from powercontext.builtin.persistence.database import AsyncDatabase
+from powercontext.builtin.persistence.count_admission import request_count_admission
 from powercontext.builtin.persistence.errors import ArtifactProcessingLeadershipLostError
 from powercontext.builtin.persistence.processing_intents import ArtifactProcessingIntentRepository
 from powercontext.builtin.persistence.supervision import (
@@ -431,6 +432,7 @@ class ArtifactProcessingSupervisor:
         retry_base_seconds: float = _RETRY_BASE_SECONDS,
         retry_cap_seconds: float = _RETRY_CAP_SECONDS,
         retry_jitter: Callable[[], float] | None = None,
+        count_thresholds: Mapping[str, int] | None = None,
         tracing: RuntimeTracing | None = None,
     ) -> None:
         for attribute in ("binding_name", "artifact_family", "config_prefix"):
@@ -454,6 +456,7 @@ class ArtifactProcessingSupervisor:
         self._retry_base = retry_base_seconds
         self._retry_cap = retry_cap_seconds
         self._jitter = retry_jitter or (lambda: SystemRandom().uniform(0.8, 1.2))
+        self._count_thresholds: Mapping[str, int] = count_thresholds or {}
         self._tracing = tracing
         self._fence: ArtifactProcessingFence | None = None
         self._status = ArtifactProcessingSupervisorStatus.STANDBY
@@ -911,6 +914,7 @@ class ArtifactProcessingSupervisor:
                             else self._tracing.stage("artifact_processing.worker.acknowledge", attributes=attributes)
                         ):
                             await self._verify_acknowledgement(assignment)
+                        await self._admit_count_threshold(binding, assignment.scope_id)
                     elif span is not None:
                         span.set_outcome(completion.outcome.value)
                     return completion
@@ -951,6 +955,34 @@ class ArtifactProcessingSupervisor:
             raise _WorkerExecutionError(
                 ArtifactProcessingWorkerFailure("completion", "missing_durable_acknowledgement", "RuntimeError", "")
             )
+
+    async def _admit_count_threshold(self, binding: ArtifactProcessingBinding, scope_id: str) -> None:
+        """Re-check the count threshold after one successful Memory window.
+
+        A success advanced the family cursor, so the remaining pending count
+        must be re-evaluated: another window is admitted only when the
+        remaining entries still reach the threshold. Topic Memory waves
+        complete through their existing windowing and never re-apply the
+        threshold to their subsequent windows.
+        """
+
+        threshold = self._count_thresholds.get(binding.binding_name)
+        if threshold is None or binding.artifact_family != "memory":
+            return
+        try:
+            async with self._database.transaction() as connection:
+                requested = await request_count_admission(connection, scope_id, binding.binding_name, threshold)
+        except Exception as error:
+            log_safely(
+                logger,
+                logging.WARNING,
+                "Count-threshold re-admission failed after a successful window",
+                extra={"event": "artifact_processing.count_admission_failure", "binding": binding.binding_name},
+            )
+            _ = error
+            return
+        if requested:
+            self.wake(binding.binding_name)
 
     async def _terminate_worker(self, handle: ArtifactProcessingWorkerHandle) -> None:
         try:

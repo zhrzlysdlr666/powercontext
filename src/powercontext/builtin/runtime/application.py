@@ -488,6 +488,7 @@ class ScopedSourceApplication:
                             span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
             except BaseValueConflictError as error:
                 raise SourceConflictError("identity", error.identity) from None
+            self._runtime.wake_artifact_processing()
             return SourceReceipt(
                 source_ref=SourceRef(source_type=record.source_type, source_id=record.source_id),
                 sequence=record.position,
@@ -504,6 +505,7 @@ class ScopedSourceApplication:
                 )
                 if span is not None:
                     span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
+            self._runtime.wake_artifact_processing()
             return SourceReceipt(source_ref=context.sources.catalog.as_ref(source), sequence=sequence)
 
 
@@ -563,7 +565,9 @@ class ScopedRecordApplication:
         /,
     ) -> ArtifactCreated:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().create_artifact(self.scope_id, family, write)
+            created = await self._runtime._records().create_artifact(self.scope_id, family, write)
+        self._runtime.wake_artifact_processing()
+        return created
 
     async def get_artifact(self, family: str, artifact_id: str, /) -> ArtifactRecord:
         async with self._runtime._scope_operation(self.scope_id):
@@ -3024,6 +3028,7 @@ class BuiltinRuntime:
         tracing: RuntimeTracing | None = None,
         scheduled_source_runner: ScheduledSourceRunner | None = None,
         scheduled_experience_runner: ScheduledExperienceRunner | None = None,
+        source_count_thresholds: Mapping[str, int] | None = None,
         remote_ingestion: RemoteIngestion | None = None,
         dream_service: DreamService | None = None,
         generation_concurrency: int = 4,
@@ -3082,6 +3087,7 @@ class BuiltinRuntime:
         self._tracing = tracing
         self._scheduled_source_runner = scheduled_source_runner
         self._scheduled_experience_runner = scheduled_experience_runner
+        self._source_count_thresholds: Mapping[str, int] = source_count_thresholds or {}
         self.source_window_limit = source_window_limit
         self.context_assembly_max_entries = context_assembly_max_entries
         self.recall_sufficiency_policy = recall_sufficiency_policy
@@ -3162,6 +3168,19 @@ class BuiltinRuntime:
                 ),
             },
         )
+
+    def wake_artifact_processing(self) -> None:
+        """Wake artifact-processing discovery after a durable journal advance.
+
+        Count-threshold admission commits its request inside the write
+        transaction; this wake lets the supervisor discover it immediately
+        instead of waiting for the next scheduled tick. Deployments without
+        count thresholds keep their existing scheduler-driven wake cadence.
+        """
+
+        supervisors = self.artifact_processing_supervisor
+        if self._source_count_thresholds and supervisors is not None:
+            supervisors.wake()
 
     def start_scheduler(  # noqa: C901
         self,

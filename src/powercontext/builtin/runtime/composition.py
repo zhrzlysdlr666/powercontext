@@ -57,6 +57,7 @@ from powercontext.builtin.artifacts.prompt.builtin import builtin_prompt_definit
 from powercontext.builtin.artifacts.prompt.service import DemonstrationGenerator
 from powercontext.builtin.artifacts.skill import AgentSkillProvider, ExternalSkillProvider, SkillGenerator
 from powercontext.builtin.artifacts.topic_memory import TOPIC_MEMORY_SOURCE_WINDOW_BINDING
+from powercontext.builtin.triggers import SOURCE_WINDOW_TRIGGER_NAME
 from powercontext.builtin.artifacts.topic_memory.generation import (
     TopicMemoryGenerationError,
     topic_memory_stage_budget,
@@ -650,6 +651,7 @@ async def open_builtin_runtime(
                 tracing=tracing,
                 scheduled_source_runner=scheduled_source_runner,
                 scheduled_experience_runner=scheduled_experience_runner,
+                source_count_thresholds=_source_count_thresholds(config.runtime),
                 remote_ingestion=contexts,
             )
         )
@@ -819,6 +821,16 @@ def _topic_memory_provider_available(config: BuiltinConfig) -> bool:
     return True
 
 
+def _source_count_thresholds(runtime: RuntimeConfig) -> dict[str, int]:
+    """Map count-threshold configuration onto Source processing binding names."""
+
+    thresholds = {
+        SOURCE_WINDOW_TRIGGER_NAME: runtime.memory_source_count_threshold,
+        TOPIC_MEMORY_SOURCE_WINDOW_BINDING: runtime.topic_memory_source_count_threshold,
+    }
+    return {binding: threshold for binding, threshold in thresholds.items() if threshold is not None}
+
+
 @asynccontextmanager
 async def _open_artifact_processing_supervisor(
     config: BuiltinConfig,
@@ -846,6 +858,7 @@ async def _open_artifact_processing_supervisor(
                     lease_mode="oceanbase" if isinstance(config.database, OceanBaseConfig) else "single-process",
                     leases=contexts.repositories.processing_leases,
                     binding_states=contexts.repositories.processing_binding_states,
+                    count_thresholds=_source_count_thresholds(config.runtime),
                     tracing=tracing,
                 )
             )
@@ -949,6 +962,7 @@ async def open_builtin_contexts(
                 model_usage_flush_timeout_seconds=config.runtime.model_usage_flush_timeout_seconds,
                 source_registry=source_registry,
                 cursor_secret=cursor_secret,
+                source_count_thresholds=_source_count_thresholds(config.runtime),
                 tracing=tracing,
             )
             try:
@@ -1026,6 +1040,7 @@ async def open_builtin_contexts(
             model_usage_flush_timeout_seconds=config.runtime.model_usage_flush_timeout_seconds,
             source_registry=source_registry,
             cursor_secret=cursor_secret,
+            source_count_thresholds=_source_count_thresholds(config.runtime),
             tracing=tracing,
         )
         try:
