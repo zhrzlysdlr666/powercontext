@@ -161,6 +161,7 @@ from powercontext.builtin.records import (
 from powercontext.builtin.review.generation import GeneratedCandidateResult, ReviewedGenerationService
 from powercontext.builtin.review.service import ReviewService
 from powercontext.builtin.runtime.context_pack import ContextPack, ContextPackDelta
+from powercontext.builtin.runtime.source_lifecycle import LifecycleApplication
 from powercontext.builtin.runtime._scope_cache import (
     DEFAULT_SCOPE_CACHE_SIZE,
     ScopeCache,
@@ -299,6 +300,7 @@ if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from powercontext.builtin.handoff_report.application import HandoffReportApplication
+    from powercontext.builtin.persistence.source_lifecycle import SourceLifecycleStore
     from powercontext.builtin.runtime.artifact_processing import ArtifactProcessingSupervisors
 
 
@@ -2665,6 +2667,17 @@ class ScopedTopicMemoryApplication:
             raise InvalidRuntimeRequestError("topic-memory-query-terms")
 
         used_fallback = False
+        withdrawn = await self._withdrawn_topic_ids()
+        # Withdrawn Topics are dropped after retrieval, so fetch a wider window to keep the
+        # caller's limit meaningful instead of returning a short page.
+        limit = request.limit
+        effective = (
+            request
+            if not withdrawn
+            else request.model_copy(
+                update={"limit": min(limit + len(withdrawn), MAX_TOPIC_MEMORY_SEARCH_LIMIT)}
+            )
+        )
         async with self._runtime._scoped_operation(
             self.scope_id,
             embedding_purpose=ModelUsagePurpose.TOPIC_MEMORY_RECALL,
@@ -2677,20 +2690,28 @@ class ScopedTopicMemoryApplication:
                 result = await search(
                     self.scope_id,
                     query,
-                    limit=request.limit,
+                    limit=effective.limit,
                     mode="fts",
                     **_admission_keyword(admission),
                 )
                 result = result.model_copy(update={"embedding_calls": 0})
             else:
                 result, used_fallback = await self._search_with_embedding(
-                    request,
+                    effective,
                     embedding,
                     search,
                     admission,
                     query_embedding,
                     embedding_timeout_seconds,
                 )
+        if withdrawn:
+            result = result.model_copy(
+                update={
+                    "hits": tuple(
+                        hit for hit in result.hits if hit.artifact_ref.artifact_id not in withdrawn
+                    )[:limit]
+                }
+            )
         observer = self._runtime._topic_memory_search_observer
         if observer is not None:
             try:
@@ -2708,6 +2729,13 @@ class ScopedTopicMemoryApplication:
                     },
                 )
         return result
+
+    async def _withdrawn_topic_ids(self) -> frozenset[str]:
+        """Return Topic artifacts the evidence graph has withdrawn from generation use."""
+
+        if self._runtime._lifecycle_store is None:
+            return frozenset()
+        return await self._runtime.lifecycle.inactive_topic_artifact_ids(self.scope_id)
 
     async def _search_with_embedding(
         self,
@@ -3049,6 +3077,7 @@ class BuiltinRuntime:
         scheduled_source_runner: ScheduledSourceRunner | None = None,
         scheduled_experience_runner: ScheduledExperienceRunner | None = None,
         source_count_thresholds: Mapping[str, int] | None = None,
+        lifecycle_store: SourceLifecycleStore | None = None,
         remote_ingestion: RemoteIngestion | None = None,
         dream_service: DreamService | None = None,
         generation_concurrency: int = 4,
@@ -3108,6 +3137,7 @@ class BuiltinRuntime:
         self._scheduled_source_runner = scheduled_source_runner
         self._scheduled_experience_runner = scheduled_experience_runner
         self._source_count_thresholds: Mapping[str, int] = source_count_thresholds or {}
+        self._lifecycle_store = lifecycle_store
         self.source_window_limit = source_window_limit
         self.context_assembly_max_entries = context_assembly_max_entries
         self.recall_sufficiency_policy = recall_sufficiency_policy
@@ -3136,6 +3166,7 @@ class BuiltinRuntime:
         self.work = WorkApplication(self)
         self.memory = MemoryApplication(self)
         self.topic_memory = TopicMemoryApplication(self)
+        self.lifecycle = LifecycleApplication(self)
         self.records = RecordApplication(self)
         self.prompts = PromptApplication(self)
         self.review = ReviewApplication(self)
