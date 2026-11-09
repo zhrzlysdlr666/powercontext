@@ -118,6 +118,18 @@ class MemoryIndex(Protocol):
     ) -> tuple[MemoryProjection, ...]: ...
 
 
+class HybridMemorySearch(Protocol):
+    """One backend-native statement that yields both candidate channels."""
+
+    async def search_hybrid(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        request: MemorySearchRequest,
+        /,
+    ) -> MemorySearchChannels: ...
+
+
 class NoMemoryIndex:
     """Truthfully expose an authoritative store without search projections."""
 
@@ -202,10 +214,38 @@ class CompositeMemoryIndex:
             tag_filter=all(index.capabilities.tag_filter for index in indexes),
         )
         self.tables = tuple(table for index in indexes for table in index.tables)
+        self._hybrid: HybridMemorySearch | None = None
+
+    def bind_hybrid(self, hybrid: HybridMemorySearch) -> None:
+        """Route hybrid candidates through one database-native statement.
+
+        A backend that can answer both channels in a single statement supplies the delegate;
+        every other composition keeps the two-query path, which is the frozen reference
+        behaviour this optimisation has to match.
+        """
+
+        self._hybrid = hybrid
 
     async def initialize(self, connection: AsyncConnection, /) -> None:
         for index in self.indexes:
             await index.initialize(connection)
+
+    async def search(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        request: MemorySearchRequest,
+        /,
+    ) -> MemorySearchChannels:
+        if request.mode == "hybrid" and self._hybrid is not None:
+            return await self._hybrid.search_hybrid(connection, scope_id, request)
+        fts: tuple[MemoryChannelHit, ...] = ()
+        vector: tuple[MemoryChannelHit, ...] = ()
+        for index in self.indexes:
+            channels = await index.search(connection, scope_id, request)
+            fts += channels.fts
+            vector += channels.vector
+        return MemorySearchChannels(fts=fts, vector=vector)
 
     async def replace(
         self,
@@ -239,21 +279,6 @@ class CompositeMemoryIndex:
     ) -> None:
         for index in self.indexes:
             await index.upsert(connection, scope_id, memory_ref, projections)
-
-    async def search(
-        self,
-        connection: AsyncConnection,
-        scope_id: str,
-        request: MemorySearchRequest,
-        /,
-    ) -> MemorySearchChannels:
-        fts: tuple[MemoryChannelHit, ...] = ()
-        vector: tuple[MemoryChannelHit, ...] = ()
-        for index in self.indexes:
-            channels = await index.search(connection, scope_id, request)
-            fts += channels.fts
-            vector += channels.vector
-        return MemorySearchChannels(fts=fts, vector=vector)
 
     async def vector_complete(
         self,
