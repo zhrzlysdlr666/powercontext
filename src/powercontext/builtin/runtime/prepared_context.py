@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -26,6 +27,7 @@ from powercontext.artifacts import ArtifactAddress, ArtifactRef
 from powercontext.builtin.artifacts.experience import Experience, ExperienceSearchHit, render_experience
 from powercontext.builtin.artifacts.memory.models import MemoryCitation, MemoryHit
 from powercontext.builtin.artifacts.profile.models import Profile
+from powercontext.builtin.artifacts.search import analyze_text
 from powercontext.builtin.artifacts.topic_memory import TopicMemory, TopicMemorySearchHit
 from powercontext.builtin.runtime.errors import PreparedContextInvariantError
 from powercontext.builtin.runtime.models import PrepareContextRequest, PreparedContext
@@ -43,6 +45,8 @@ from powercontext.builtin.runtime.prepared_text import (
 from powercontext.builtin.runtime.recall_sufficiency import RecallBudgetView
 
 _MIN_TRUNCATED_CONTENT_BYTES = 64
+_MIN_FRAGMENT_CHARS = 2
+_SENTENCE_PATTERN = re.compile(r"[^.!?。！？\n]+[.!?。！？]*")
 _ELLIPSIS = "…"
 _BEGIN_MARKER = "BEGIN_POWERCONTEXT_PREPARED_CONTEXT_V1"
 _END_MARKER = "END_POWERCONTEXT_PREPARED_CONTEXT_V1"
@@ -106,6 +110,7 @@ class PreparedContextBuild:
     origins: tuple[PreparedContextOrigin, ...]
     omissions: PreparedContextOmissions = PreparedContextOmissions()
     code_origins: tuple[CodeEvidenceRef, ...] = ()
+    fragments: tuple[PreparedContextFragment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,6 +123,21 @@ class MemoryEntryAddress:
 
 
 PreparedContextOrigin = MemoryCitation | ArtifactRef | MemoryEntryAddress | ArtifactAddress
+
+
+@dataclass(frozen=True)
+class PreparedContextFragment:
+    """One literal slice of a Memory entry, with the address needed to re-read it.
+
+    ``start`` and ``end`` are half-open Python character offsets into the entry text the
+    address names, and ``text`` is exactly ``entry.text[start:end]``: the slice is quoted, never
+    rewritten, summarized, or generated.
+    """
+
+    address: MemoryEntryAddress
+    start: int
+    end: int
+    text: str
 
 
 @dataclass(frozen=True)
@@ -234,6 +254,13 @@ class PreparedContextBuilder:
             raise PreparedContextInvariantError("topic-memory-candidate-limit")
         if sum(len(candidates.hits) for candidates in experience_candidates) > self.experience_candidate_limit:
             raise PreparedContextInvariantError("experience-candidate-limit")
+
+        if request.evidence_selection:
+            return self._build_evidence_selection(
+                request=request,
+                current_scope_id=current_scope_id,
+                memory_candidates=memory_candidates,
+            )
 
         content, origins, omissions = self._select_entries(
             request=request,
@@ -432,6 +459,85 @@ class PreparedContextBuilder:
             return None, (), omissions
         content = render_context_text(included, assembly)
         return content, tuple(origins), omissions
+
+    def _build_evidence_selection(
+        self,
+        *,
+        request: PrepareContextRequest,
+        current_scope_id: str | None,
+        memory_candidates: Sequence[PreparedMemoryCandidates],
+    ) -> PreparedContextBuild:
+        """Deliver literal evidence slices chosen for this query inside the byte budget.
+
+        Candidates arrive already recalled; this pass only decides *inside* their bodies, so
+        every delivered slice is a quote with exact character offsets and the citation that
+        re-reads the version it came from.
+        """
+
+        fragments = self._evidence_fragments(request, current_scope_id, memory_candidates)
+        if not fragments:
+            return PreparedContextBuild(context=self.empty(), origins=())
+        content = _render_fragments(fragments)
+        return PreparedContextBuild(
+            context=PreparedContext(
+                status="ready",
+                content=content,
+                content_bytes=len(content.encode("utf-8")),
+            ),
+            origins=tuple(fragment.address for fragment in fragments),
+            fragments=fragments,
+        )
+
+    def _evidence_fragments(
+        self,
+        request: PrepareContextRequest,
+        current_scope_id: str | None,
+        memory_candidates: Sequence[PreparedMemoryCandidates],
+    ) -> tuple[PreparedContextFragment, ...]:
+        """Rank every candidate sentence by query overlap, then pack it into the budget."""
+
+        ranked: list[tuple[float, int, PreparedContextFragment]] = []
+        for candidates in memory_candidates:
+            scope_id = candidates.scope_id or current_scope_id or ""
+            for rank, hit in enumerate(candidates.hits[: self.memory_candidate_limit]):
+                reference = candidates.memory_ref or hit.memory_ref
+                address = MemoryEntryAddress(
+                    memory=ArtifactAddress(scope_id=scope_id, artifact=reference),
+                    entry_id=hit.entry_id,
+                    entry_version_id=hit.entry_version_id,
+                )
+                for start, end in _sentence_spans(hit.text):
+                    text = hit.text[start:end]
+                    ranked.append(
+                        (
+                            _evidence_score(request.query, text),
+                            rank,
+                            PreparedContextFragment(address=address, start=start, end=end, text=text),
+                        )
+                    )
+        if not ranked:
+            return ()
+        ranked.sort(key=lambda item: (-item[0], item[1], item[2].start))
+        relevant = [item for item in ranked if item[0] > 0.0]
+        # A query that shares no term with any candidate still deserves the head of the best
+        # candidate rather than an empty context, so fall back to the top-ranked slices.
+        pool = relevant or [item for item in ranked if item[1] == ranked[0][1]]
+        selected: list[PreparedContextFragment] = []
+        seen: set[tuple[str, str, int, int]] = set()
+        for _, _, fragment in pool:
+            identity = (
+                fragment.address.memory.scope_id,
+                fragment.address.entry_version_id,
+                fragment.start,
+                fragment.end,
+            )
+            if identity in seen:
+                continue
+            if len(_render_fragments((*selected, fragment)).encode("utf-8")) > request.max_bytes:
+                continue
+            selected.append(fragment)
+            seen.add(identity)
+        return tuple(selected)
 
     def _profile_entries(self, candidates: Sequence[PreparedProfileCandidate]) -> tuple[_PreparedContextEntry, ...]:
         entries = []
@@ -722,6 +828,59 @@ def _render_entry(entry: _PreparedContextEntry) -> dict[str, object]:
 
 def _rendered_bytes(entries: Sequence[_PreparedContextEntry]) -> int:
     return len(_render(entries).encode("utf-8"))
+
+
+def _sentence_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """Split text into trimmed sentence spans that keep their offsets in the original."""
+
+    spans: list[tuple[int, int]] = []
+    for match in _SENTENCE_PATTERN.finditer(text):
+        start, end = match.span()
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if end - start >= _MIN_FRAGMENT_CHARS:
+            spans.append((start, end))
+    return tuple(spans)
+
+
+def _evidence_score(query: str, text: str) -> float:
+    """Score one slice by the analyzer terms it shares with the query.
+
+    CJK bigrams count double because they are the narrowest term the analyzer emits that still
+    carries word-level meaning; single CJK characters and unigrams stay at weight one.
+    """
+
+    terms = set(analyze_text(query).split())
+    if not terms:
+        return 0.0
+    present = terms.intersection(analyze_text(text).split())
+    return float(sum(2.0 if term.startswith("b_") else 1.0 for term in present))
+
+
+def _render_fragments(fragments: Sequence[PreparedContextFragment]) -> str:
+    envelope = {
+        "trust": "untrusted_history",
+        "items": [_render_fragment(fragment) for fragment in fragments],
+    }
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    return "\n\n".join((TRUST_POLICY, f"{_BEGIN_MARKER}\n{encoded}\n{_END_MARKER}"))
+
+
+def _render_fragment(fragment: PreparedContextFragment) -> dict[str, object]:
+    address = fragment.address
+    return {
+        "citation": {
+            "scope_id": address.memory.scope_id,
+            "memory_ref": address.memory.artifact.model_dump(mode="json"),
+            "entry_id": address.entry_id,
+            "entry_version_id": address.entry_version_id,
+        },
+        "content": fragment.text,
+        "start": fragment.start,
+        "end": fragment.end,
+    }
 
 
 def _truncate_utf8(text: str, byte_budget: int) -> str:
