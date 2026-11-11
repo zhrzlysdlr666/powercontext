@@ -665,7 +665,12 @@ class ArtifactProcessingSupervisor:
         if capacity <= 0:
             return
         if not state.discovery_pending and self._lease_mode == "single-process":
-            return
+            # A durable request can be recorded by a writer that does not hold this
+            # supervisor: capture writes the count admission inside its own transaction.
+            # Reading the counter keeps that request from waiting for an unrelated wake-up.
+            if not await self._has_unhandled_request(state):
+                return
+            state.discovery_pending = True
         if state.requested_after == 0:
             state.notification_at_start = self._notifications
         async with self._database.transaction() as connection:
@@ -700,6 +705,28 @@ class ArtifactProcessingSupervisor:
         else:
             state.discovery_pending = True
             state.next_discovery_at = asyncio.get_running_loop().time() + _DISCOVERY_PAGE_DELAY_SECONDS
+
+    async def _has_unhandled_request(self, state: _FamilyState) -> bool:
+        """True when the durable counter proves one invocation is still owed."""
+
+        table = ARTIFACT_PROCESSING_INTENTS_TABLE
+        try:
+            async with self._database.transaction() as connection:
+                await self._leases.require_fence(connection, self._require_current_fence())
+                count = await connection.scalar(
+                    select(func.count())
+                    .select_from(table)
+                    .where(
+                        table.c.binding_name == state.binding.binding_name,
+                        table.c.requested_generation > table.c.handled_generation,
+                    )
+                )
+        except ArtifactProcessingLeadershipLostError:
+            raise
+        except Exception as error:  # noqa: BLE001 - a probe must never stop the supervisor
+            self._log_failure(state, None, error, "scope_discovery")
+            return False
+        return int(count or 0) > 0
 
     async def _discover_automatic(self, state: _FamilyState) -> None:  # noqa: C901 - bounded admission state
         binding = state.binding
@@ -1127,6 +1154,11 @@ class ArtifactProcessingSupervisor:
                 deadlines.append(state.next_schedule_at)
             if state.discovery_pending or state.scan_in_progress or not state.reconcile_complete or state.degraded:
                 deadlines.append(max(now, state.next_discovery_at))
+        if self._count_thresholds:
+            # A count threshold is a durable request that any writer can record, and the
+            # caller that recorded it may not hold this supervisor. Poll on the tick so a
+            # crossed threshold is never left waiting for the next unrelated wake-up.
+            deadlines.append(now + self._tick)
         return None if not deadlines else max(0.001, min(deadlines) - now)
 
     def _log_failure(
