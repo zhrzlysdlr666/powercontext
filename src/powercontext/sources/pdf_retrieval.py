@@ -90,7 +90,13 @@ _STOPWORDS = frozenset(
 # Lines that open a page and name its topic: the note and section titles a filing writes for
 # itself. Matching a question against those titles reaches a page whose body words differ.
 _UPPER_TITLE = re.compile(r"^[A-Z0-9][A-Z0-9&,'()\-/. ]{3,70}$")
-_MIXED_TITLE = re.compile(r"^[A-Z][A-Za-z&,'()\-/. ]{3,70}$")
+_MIXED_TITLE = re.compile(r"^[A-Z][A-Za-z0-9&,'()\-/. ]{3,70}$")
+# A filing names its own sections as ``Item 3. Legal Proceedings``; the ordinal carries no
+# topic, and a question never asks about it, so only the words after it can identify a page.
+_ITEM_PREFIX = re.compile(r"^Item\s+\d+[A-C]?\.?\s+", re.IGNORECASE)
+# Notes to the financial statements use their own heading shape: ``Note 21 - Legal
+# Proceedings``. The note's number is an index, not a topic, so only the title matters.
+_NOTE_PREFIX = re.compile(r"^Note\s+\d+[A-Z]?\s*[-\u2013\u2014]\s*", re.IGNORECASE)
 # Small, hand-written bridge between the way questions are phrased and the way filings are
 # written. Only one-step synonyms: no document, sector or company specific knowledge.
 _EXPANSIONS: dict[str, tuple[str, ...]] = {
@@ -119,12 +125,39 @@ _EXPANSIONS: dict[str, tuple[str, ...]] = {
     "profitable": ("margin", "income"),
 }
 
+# A question that names a figure or a statement line is answered inside the primary
+# statements; anything else is answered by a note, a heading or a disclosure paragraph.
+_STATEMENT_LINES = frozenset(
+    """
+    revenue revenues sales income margin profit profits earnings cash debt debts assets liabilities
+    expense expenses cost costs capex dividend dividends buyback inventory inventories equity goodwill
+    receivable receivables payable payables tax taxes ebitda operating gross net share shares eps
+    capital expenditure expenditures borrowings investment investments backlog
+    """.split()
+)
+
+
+def _asks_for_figure(terms: Sequence[str]) -> bool:
+    """True when the question wants a number off a statement rather than a disclosure.
+
+    A four-digit year is a digit token but it dates the filing instead of naming a line, so
+    it must not be enough on its own to open the statement view.
+    """
+
+    for term in terms:
+        if term in _STATEMENT_LINES:
+            return True
+        if term.isdigit() and not (len(term) == 4 and 1900 <= int(term) <= 2100):
+            return True
+    return False
+
+
 # Quota per view when ``limit`` is 20. Views that found nothing leave their slots to the
 # lexical views, so the totals stay below ``limit`` and the filler tops them up.
 _VIEW_BUDGET = (
     ("statement", 3),
     ("table", 2),
-    ("heading", 2),
+    ("heading", 4),
     ("phrase", 3),
     ("neighbour", 2),
     ("concept", 8),
@@ -155,8 +188,11 @@ def content_terms(question: str) -> list[str]:
 def _expand(terms: Sequence[str]) -> list[str]:
     expanded = list(terms)
     for term in terms:
-        for extra in _EXPANSIONS.get(term, ()):
-            if extra not in expanded:
+        # A filing writes the plural of the thing a question asks about in the singular
+        # ("revenue" -> "Revenues:"). One-letter folding covers that without a stemmer.
+        variants = [term[:-1]] if term.endswith("s") and len(term) > 3 else [term + "s"]
+        for extra in (*_EXPANSIONS.get(term, ()), *variants):
+            if extra and extra not in expanded:
                 expanded.append(extra)
     return expanded
 
@@ -201,11 +237,28 @@ class _Corpus:
             stripped = line.strip()
             if not stripped or stripped.lower() == "table of contents":
                 continue
-            if len(stripped.split()) <= 12 and (_UPPER_TITLE.match(stripped) or _MIXED_TITLE.match(stripped)):
-                titles.append(" ".join(_words(stripped)))
+            candidate = _ITEM_PREFIX.sub("", stripped).strip()
+            if len(candidate.split()) <= 12 and (
+                _UPPER_TITLE.match(candidate) or _MIXED_TITLE.match(candidate)
+            ):
+                titles.append(" ".join(_words(candidate)))
             scanned += 1
-            if scanned >= 6:
+            if scanned >= 8:
                 break
+        # A 10-K starts a part's items wherever the previous one ended, so ``Item 3. Legal
+        # Proceedings`` can sit halfway down a page whose top is still the previous note.
+        # The narration that answers the question then continues onto the following page.
+        for line in text.splitlines():
+            stripped = line.strip()
+            if _ITEM_HEADING.match(stripped):
+                remainder = _ITEM_PREFIX.sub("", stripped).strip()
+            elif _NOTE_PREFIX.match(stripped):
+                remainder = _NOTE_PREFIX.sub("", stripped).strip()
+            else:
+                continue
+            title = " ".join(_words(remainder))
+            if title and title not in titles:
+                titles.append(title)
         return titles
 
     @staticmethod
@@ -269,7 +322,11 @@ class _Corpus:
     def headings_for(self, terms: Sequence[str]) -> list[int]:
         """Pages whose own title names something the question asks about."""
 
-        wanted = {term for term in terms if self.idf(term) > math.log(2.0)}
+        wanted = {
+            term
+            for term in terms
+            if 0 < len(self.postings.get(term, ())) <= 0.1 * self.count
+        }
         scores: dict[int, float] = defaultdict(float)
         for title, positions in self.headings.items():
             words = title.split()
@@ -282,7 +339,10 @@ class _Corpus:
             for position in positions:
                 for offset in range(3):
                     if position + offset < self.count:
-                        scores[position + offset] += value / (1 + offset)
+                        # A section runs over the page break, and the annotation points at
+                        # the page the sentence landed on, so the successor keeps most of
+                        # the title's weight instead of half of it.
+                        scores[position + offset] += value * (1.0, 0.9, 0.6)[offset]
         return self.ordered(scores)
 
     def tables_for(self, terms: Sequence[str]) -> list[int]:
@@ -306,19 +366,32 @@ class _Corpus:
                 scores[position] += idf * density * 4.0
         return self.ordered(scores)
 
+    def _discriminating(self, terms: Sequence[str]) -> list[str]:
+        """Drop the words that every page carries: the issuer name and the fiscal year.
+
+        They are the two tokens a filing repeats on every page, so they add a nearly
+        constant score to whichever pages happen to be text-dense and crowd out the one
+        page that actually answers the question.
+        """
+
+        kept = [term for term in terms if len(self.postings.get(term, ())) <= 0.4 * self.count]
+        return kept or list(terms)
+
     def rank(self, question: str, limit: int) -> list[_StoredPage]:
         lexical_terms = _words(question)
-        concept_terms = content_terms(question)
+        concept_terms = self._discriminating(content_terms(question))
         lexical = self.ordered(self.bm25(lexical_terms))
         concept_scores = self.bm25(_expand(concept_terms))
         concept = self.ordered(concept_scores)
         phrase = self.ordered(self.phrases(concept_terms))
         # A line-item question is answered by the primary statements themselves, which are
         # the first statement-opening pages in document order, not the page that merely
-        # repeats the metric most often.
-        statements = list(self.statements)
+        # repeats the metric most often. A question about a disclosure ("legal battles")
+        # would only give those pages' slots away, so the view stays closed unless the
+        # question names a figure or a statement line.
+        statements = list(self.statements) if _asks_for_figure(concept_terms) else []
         heading = self.headings_for(concept_terms)
-        tables = self.tables_for(concept_terms) if any(term.isdigit() for term in concept_terms) else []
+        tables = self.tables_for(_expand(concept_terms))
         neighbours = self.neighbours(list(dict.fromkeys(lexical + concept))[:5])
 
         views = {
