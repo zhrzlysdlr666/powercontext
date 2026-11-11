@@ -104,9 +104,9 @@ _EXPANSIONS: dict[str, tuple[str, ...]] = {
     "battle": ("proceedings", "litigation"),
     "battles": ("proceedings", "litigation"),
     "lawsuit": ("litigation", "proceedings"),
-    "geograph": ("geographic", "segment"),
-    "geography": ("geographic", "segment"),
-    "geographies": ("geographic", "segment"),
+    "geograph": ("geographic", "regions", "segment"),
+    "geography": ("geographic", "regions", "segment"),
+    "geographies": ("geographic", "regions", "segment"),
     "cyclicality": ("cyclical", "seasonal"),
     "cyclical": ("cyclical", "seasonal"),
     "capex": ("capital", "expenditure", "expenditures"),
@@ -127,14 +127,30 @@ _EXPANSIONS: dict[str, tuple[str, ...]] = {
 
 # A question that names a figure or a statement line is answered inside the primary
 # statements; anything else is answered by a note, a heading or a disclosure paragraph.
+def _singular(term: str) -> str:
+    """A crude de-pluralisation, enough to make ``liability`` meet ``liabilities``."""
+
+    if term.endswith("ies") and len(term) > 4:
+        return term[:-3] + "y"
+    if term.endswith(("ses", "xes", "ches", "shes")) and len(term) > 4:
+        return term[:-2]
+    if term.endswith("s") and not term.endswith("ss") and len(term) > 3:
+        return term[:-1]
+    return term
+
+
 _STATEMENT_LINES = frozenset(
     """
     revenue revenues sales income margin profit profits earnings cash debt debts assets liabilities
     expense expenses cost costs capex dividend dividends buyback inventory inventories equity goodwill
     receivable receivables payable payables tax taxes ebitda operating gross net share shares eps
     capital expenditure expenditures borrowings investment investments backlog
+    ratio ratios growth percentage change
     """.split()
 )
+# The question says "liability" where the statement says "liabilities"; compare the two on
+# the same footing so a singular noun still opens the statement view.
+_STATEMENT_STEMS = frozenset(_singular(term) for term in _STATEMENT_LINES)
 
 
 def _asks_for_figure(terms: Sequence[str]) -> bool:
@@ -145,24 +161,54 @@ def _asks_for_figure(terms: Sequence[str]) -> bool:
     """
 
     for term in terms:
-        if term in _STATEMENT_LINES:
+        if _singular(term) in _STATEMENT_STEMS:
             return True
         if term.isdigit() and not (len(term) == 4 and 1900 <= int(term) <= 2100):
             return True
     return False
 
 
-# Quota per view when ``limit`` is 20. Views that found nothing leave their slots to the
-# lexical views, so the totals stay below ``limit`` and the filler tops them up.
-_VIEW_BUDGET = (
-    ("statement", 3),
-    ("table", 2),
-    ("heading", 4),
-    ("phrase", 3),
-    ("neighbour", 2),
-    ("concept", 8),
-    ("lexical", 8),
+# A question about what the company *is* — what it sells, where it sells it, whom to — is
+# answered by the business description that every annual report opens with. Nothing else in
+# the filing describes the company in the abstract, so this view only opens for those.
+_BUSINESS_TERMS = frozenset(
+    """
+    geography geographies geographic region regions operate operates operating products product
+    services service segment segments customers customer industry industries sell sells selling
+    sell competitor competitors competition
+    """.split()
 )
+
+def _asks_about_business(terms: Sequence[str]) -> bool:
+    """True when the question is about the company itself, not about one of its numbers."""
+
+    return any(term in _BUSINESS_TERMS for term in terms)
+
+
+# How much each ranking view is trusted when the page window is filled. Ordering the views
+# is not enough on its own: a fixed number of slots per view lets the first views consume the
+# whole window, so a page that one view ranks highly can still lose to pages that no view
+# ranks first.
+_VIEW_WEIGHTS = (
+    ("statement", 1.2),
+    ("table", 0.8),
+    ("heading", 0.9),
+    ("phrase", 0.8),
+    ("concept", 1.0),
+    ("lexical", 1.0),
+    ("front", 0.6),
+)
+# Rank decay: a page placed first by a view scores 1/(k+1). The decay is deliberately steep
+# because the second-best page for a question is usually the neighbouring page of the best
+# one, not a page that answers a different question.
+_FUSION_K = 3.0
+_RANK_DEPTH = 40
+# Credit for being ranked at all by the most trusted view that noticed the page, so a page
+# carried by one strong view is not drowned by pages that several weak views happen to touch.
+_SINGLE_VIEW_BONUS = 0.35
+# The business description occupies the opening pages of a filing; a quarter of a million
+# characters of notes follow it.
+_FRONT_PAGES = 25
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,11 +248,32 @@ def _page_number(source_id: str, fallback: int) -> int:
     return int(match.group(1)) if match else fallback
 
 
+def _drop_running_head(pages: Sequence["_StoredPage"]) -> list["_StoredPage"]:
+    """Remove the one line every page repeats, such as the document name or a running head.
+
+    The runtime stores each page as ``DOCUMENT_ID\\nPAGE_TEXT``, so the document identifier is
+    indexed along with the body. It already appears on every page, which makes it worthless
+    for ranking and makes the first line of every page look like a title.
+    """
+
+    if len(pages) < 2:
+        return list(pages)
+    heads = [page.text.split("\n", 1)[0].strip() for page in pages]
+    head = heads[0]
+    if not head or any(other != head for other in heads):
+        return list(pages)
+    trimmed: list[_StoredPage] = []
+    for page in pages:
+        _, _, body = page.text.partition("\n")
+        trimmed.append(_StoredPage(page_number=page.page_number, text=body, citation=page.citation))
+    return trimmed
+
+
 class _Corpus:
     """One immutable index over the pages of one Memory revision."""
 
     def __init__(self, pages: Sequence[_StoredPage]) -> None:
-        self.pages = tuple(pages)
+        self.pages = tuple(_drop_running_head(pages))
         self.postings: dict[str, dict[int, int]] = defaultdict(dict)
         self.lengths: list[int] = []
         self._digits: dict[int, int] = {}
@@ -366,6 +433,19 @@ class _Corpus:
                 scores[position] += idf * density * 4.0
         return self.ordered(scores)
 
+    def front_matter(self, terms: Sequence[str]) -> list[int]:
+        """Opening pages that answer "what does this company do and where".
+
+        The business description is the first section of an annual report, so a question
+        about products, customers or geographies is answered a few pages in, before the
+        discussion of results. Scoring the whole filing lets that page lose to the dozens
+        of later pages that repeat the same words inside tables.
+        """
+
+        scores = self.bm25(terms)
+        opening = [position for position in self.ordered(scores) if position < _FRONT_PAGES]
+        return opening
+
     def _discriminating(self, terms: Sequence[str]) -> list[str]:
         """Drop the words that every page carries: the issuer name and the fiscal year.
 
@@ -378,51 +458,40 @@ class _Corpus:
         return kept or list(terms)
 
     def rank(self, question: str, limit: int) -> list[_StoredPage]:
-        lexical_terms = _words(question)
         concept_terms = self._discriminating(content_terms(question))
-        lexical = self.ordered(self.bm25(lexical_terms))
-        concept_scores = self.bm25(_expand(concept_terms))
-        concept = self.ordered(concept_scores)
-        phrase = self.ordered(self.phrases(concept_terms))
-        # A line-item question is answered by the primary statements themselves, which are
-        # the first statement-opening pages in document order, not the page that merely
-        # repeats the metric most often. A question about a disclosure ("legal battles")
-        # would only give those pages' slots away, so the view stays closed unless the
-        # question names a figure or a statement line.
-        statements = list(self.statements) if _asks_for_figure(concept_terms) else []
-        heading = self.headings_for(concept_terms)
-        tables = self.tables_for(_expand(concept_terms))
-        neighbours = self.neighbours(list(dict.fromkeys(lexical + concept))[:5])
-
-        views = {
-            "lexical": lexical,
-            "concept": concept,
-            "phrase": phrase,
-            "statement": statements,
-            "heading": heading,
-            "table": tables,
-            "neighbour": neighbours,
+        expanded = _expand(concept_terms)
+        views: dict[str, list[int]] = {
+            "lexical": self.ordered(self.bm25(_words(question))),
+            "concept": self.ordered(self.bm25(expanded)),
+            "phrase": self.ordered(self.phrases(concept_terms)),
+            # A line-item question is answered by the primary statements themselves, which
+            # are the first statement-opening pages in document order, not the page that
+            # merely repeats the metric most often. A question about a disclosure ("legal
+            # battles") would only give those pages' slots away, so the view stays closed
+            # unless the question names a figure or a statement line.
+            "statement": list(self.statements) if _asks_for_figure(concept_terms) else [],
+            "heading": self.headings_for(concept_terms),
+            "table": self.tables_for(expanded),
+            "front": self.front_matter(expanded) if _asks_about_business(concept_terms) else [],
         }
-        chosen: list[int] = []
-        seen: set[int] = set()
-        for view, budget in _VIEW_BUDGET:
-            taken = 0
-            for position in views[view]:
-                if taken >= budget or len(chosen) >= limit:
-                    break
-                if position in seen:
-                    continue
-                seen.add(position)
-                chosen.append(position)
-                taken += 1
-        for view in ("concept", "lexical"):
-            for position in views[view]:
-                if len(chosen) >= limit:
-                    break
-                if position not in seen:
-                    seen.add(position)
-                    chosen.append(position)
-        return [self.pages[position] for position in chosen[:limit]]
+        # Score every page by how highly each view ranks it and keep the best ``limit``.
+        # Handing each view a fixed number of slots does not work here: the statement and
+        # title views alone can fill the window, so a page that only the lexical view
+        # believes in — the page that prints the sentence the question quotes — is dropped
+        # even though it was ranked inside the top ten.
+        scores: dict[int, float] = defaultdict(float)
+        credited: dict[int, float] = defaultdict(float)
+        for view, weight in _VIEW_WEIGHTS:
+            for rank, position in enumerate(views[view][:_RANK_DEPTH]):
+                scores[position] += weight / (_FUSION_K + rank + 1)
+                if weight > credited[position]:
+                    credited[position] = weight
+        fused = {
+            position: score + _SINGLE_VIEW_BONUS * credited[position]
+            for position, score in scores.items()
+        }
+        ordered = sorted(fused.items(), key=lambda item: (-item[1], self.pages[item[0]].page_number))
+        return [self.pages[position] for position, _score in ordered[:limit]]
 
 
 _CACHE: dict[tuple[str, int, int], _Corpus] = {}
