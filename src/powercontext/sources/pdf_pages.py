@@ -206,38 +206,15 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 async def search_pdf_pages(memory, question: str, *, limit: int = 20):
     """Return up to ``limit`` citations, one per distinct page, for one question.
 
-    Retrieval runs over the page evidence already indexed in Memory; the result is mapped
-    straight back to the exact Memory entry version that was hit, so every citation re-reads
-    the page text the answer was drawn from. Duplicate hits collapse onto the first citation
-    for that page, which keeps ``len(result)`` equal to the number of distinct pages.
+    Retrieval runs over the page evidence already indexed in Memory and returns the exact
+    Memory entry version behind every page, so each citation re-reads the page the answer
+    was drawn from. The ranking itself lives in :mod:`powercontext.sources.pdf_retrieval`;
+    pages are distinct by construction because one page is one entry.
     """
 
-    from powercontext.builtin.artifacts.memory.models import MemoryCitation
-    from powercontext.builtin.runtime import SearchMemoryRequest
+    from powercontext.sources.pdf_retrieval import search_pages
 
-    if not isinstance(question, str) or not question.strip():
-        return ()
-    if limit < 1:
-        return ()
-    page = await memory.search(
-        SearchMemoryRequest(query=question, mode="fts", limit=max(limit * 4, limit))
-    )
-    citations: list[MemoryCitation] = []
-    seen: set[str] = set()
-    for hit in page.hits:
-        if hit.entry_id in seen:
-            continue
-        seen.add(hit.entry_id)
-        citations.append(
-            MemoryCitation(
-                memory_ref=hit.memory_ref,
-                entry_id=hit.entry_id,
-                entry_version_id=hit.entry_version_id,
-            )
-        )
-        if len(citations) >= limit:
-            break
-    return tuple(citations)
+    return await search_pages(memory, question, limit=limit)
 
 
 __all__ = [
