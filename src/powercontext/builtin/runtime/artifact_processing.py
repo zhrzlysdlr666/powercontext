@@ -75,6 +75,9 @@ _OCEANBASE_TICK_SECONDS = 1.0
 _OCEANBASE_LEASE_SECONDS = 15.0
 _RETRY_BASE_SECONDS = 30.0
 _RETRY_CAP_SECONDS = 1800.0
+# A Worker that died or timed out left its scope untouched, so nothing is gained by resting
+# for the first backoff step: retry at once, and only start backing off if that also fails.
+_FIRST_RETRY_SECONDS = 1.0
 _CONTROL_CONFLICT_RETRY_SECONDS = 0.1
 _DISCOVERY_PAGE_SIZE = 100
 _RETRY_STATE_LIMIT = 1000
@@ -1064,7 +1067,10 @@ class ArtifactProcessingSupervisor:
             except Exception as error:
                 previous = state.retries.get(scope)
                 failures = 1 if previous is None else previous.failures + 1
-                delay = min(self._retry_cap, self._retry_base * 2 ** min(failures - 1, 20) * self._jitter())
+                if failures == 1:
+                    delay = min(self._retry_base, _FIRST_RETRY_SECONDS) * self._jitter()
+                else:
+                    delay = min(self._retry_cap, self._retry_base * 2 ** min(failures - 2, 20) * self._jitter())
                 self._defer(state, scope, failures, asyncio.get_running_loop().time() + delay)
                 state.failed += 1
                 if isinstance(error, TimeoutError):
