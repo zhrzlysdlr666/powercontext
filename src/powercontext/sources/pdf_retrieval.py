@@ -120,15 +120,18 @@ _EXPANSIONS: dict[str, tuple[str, ...]] = {
 }
 
 # Quota per view when ``limit`` is 20. Views that found nothing leave their slots to the
-# lexical views, so the totals stay below ``limit`` and the filler tops them up.
+# lexical views, so the totals stay below ``limit`` and the filler tops them up. The
+# sections that name what the question asks about (headings, note titles, statement
+# openers) get enough room to place a page the question itself never spells out, while the
+# two lexical views keep the largest share for questions that are quoted almost verbatim.
 _VIEW_BUDGET = (
     ("statement", 3),
     ("table", 2),
-    ("heading", 2),
-    ("phrase", 3),
-    ("neighbour", 2),
-    ("concept", 8),
-    ("lexical", 8),
+    ("heading", 3),
+    ("phrase", 1),
+    ("neighbour", 1),
+    ("concept", 4),
+    ("lexical", 6),
 )
 
 

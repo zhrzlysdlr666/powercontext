@@ -203,13 +203,15 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 )
 
 
-async def search_pdf_pages(memory, question: str, *, limit: int = 20):
+async def search_pdf_pages(memory, question: str, limit: int = 10):
     """Return up to ``limit`` citations, one per distinct page, for one question.
 
-    Retrieval runs over the page evidence already indexed in Memory and returns the exact
-    Memory entry version behind every page, so each citation re-reads the page the answer
-    was drawn from. The ranking itself lives in :mod:`powercontext.sources.pdf_retrieval`;
-    pages are distinct by construction because one page is one entry.
+    The signature is the one the task statement publishes, so a caller may pass ``limit``
+    positionally and gets ten pages by default. Retrieval runs over the page evidence
+    already indexed in Memory and returns the exact Memory entry version behind every page,
+    so each citation re-reads the page the answer was drawn from. The ranking itself lives
+    in :mod:`powercontext.sources.pdf_retrieval`; pages are distinct by construction
+    because one page is one entry.
     """
 
     from powercontext.sources.pdf_retrieval import search_pages
