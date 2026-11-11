@@ -764,6 +764,7 @@ class MemoryService:
             vector=admitted_vector if selected_mode in {"vector", "hybrid"} else (),
             limit=coarse_limit,
         )
+        hits = _retained_hits(selected, hits)
         return await self._reranked_search_result(
             mode=selected_mode,
             query=normalized_query,
@@ -1943,3 +1944,27 @@ def _default_id(kind: str) -> str:
     except KeyError:
         raise InvalidMemoryCandidateError("identity-kind", kind) from None
     return f"{prefix}_{uuid4().hex}"
+
+
+def _retained_hits(memories: Sequence[Memory], hits: tuple[MemoryHit, ...]) -> tuple[MemoryHit, ...]:
+    """Keep only hits whose entry is still active in the Memory Revision the hit names.
+
+    Search projections are rebuildable indexes and may lag one deactivation behind; the
+    immutable Manifest is the authority on which logical entries are in use.
+    """
+
+    if not hits:
+        return hits
+    active: dict[tuple[str, int], set[str]] = {}
+    for memory in memories:
+        reference = memory.as_ref()
+        active[(reference.artifact_id, reference.revision)] = {
+            item.entry_id for item in memory.content.manifest.entries if item.state == "active"
+        }
+    retained: list[MemoryHit] = []
+    for hit in hits:
+        reference = hit.memory_ref
+        entries = active.get((reference.artifact_id, reference.revision))
+        if entries is None or hit.entry_id in entries:
+            retained.append(hit)
+    return tuple(retained)

@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -93,6 +95,16 @@ class PreparedContextOmissions:
 
 
 @dataclass(frozen=True)
+class PreparedContextFragment:
+    """One literal span of a Memory entry selected as query-relevant evidence."""
+
+    address: MemoryEntryAddress
+    start: int
+    end: int
+    text: str
+
+
+@dataclass(frozen=True)
 class PreparedContextBuild:
     """Final public context and the exact origins selected to produce it.
 
@@ -106,6 +118,7 @@ class PreparedContextBuild:
     origins: tuple[PreparedContextOrigin, ...]
     omissions: PreparedContextOmissions = PreparedContextOmissions()
     code_origins: tuple[CodeEvidenceRef, ...] = ()
+    fragments: tuple[PreparedContextFragment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -228,6 +241,13 @@ class PreparedContextBuilder:
 
             return assemble_code(request, code_candidates, self.entry_limit, historical)
 
+        if request.evidence_selection:
+            return self._build_selection_result(
+                request=request,
+                current_scope_id=current_scope_id,
+                memory_candidates=memory_candidates,
+            )
+
         if sum(len(candidates.hits) for candidates in memory_candidates) > self.memory_candidate_limit:
             raise PreparedContextInvariantError("memory-candidate-limit")
         if len(topic_memory_hits) > self.topic_memory_candidate_limit:
@@ -292,6 +312,40 @@ class PreparedContextBuilder:
             truncated_items=omissions.truncated_items,
             dropped_items=omissions.dropped_items,
             unused_bytes=max(0, request.max_bytes - content_bytes),
+        )
+
+    def _build_selection_result(
+        self,
+        *,
+        request: PrepareContextRequest,
+        current_scope_id: str | None,
+        memory_candidates: Sequence[PreparedMemoryCandidates],
+    ) -> PreparedContextBuild:
+        """Select literal Memory spans for one query and render them within the byte budget."""
+
+        if sum(len(candidates.hits) for candidates in memory_candidates) > self.memory_candidate_limit:
+            raise PreparedContextInvariantError("memory-candidate-limit")
+        entries = _selection_entries(memory_candidates, current_scope_id)
+        ranked = _rank_selection_entries(entries, _query_tokens(request.query))
+        selection = _SelectionBudget(request.max_bytes)
+        for entry, anchor in ranked:
+            selection.admit(entry, anchor)
+        if not selection.items:
+            for entry, _ in ranked:
+                whole = entry.whole()
+                if whole is not None:
+                    selection.admit(entry, whole)
+        items = selection.items
+        if not items:
+            return PreparedContextBuild(context=self.empty(), origins=())
+        content = _render_selection(items)
+        content_bytes = len(content.encode("utf-8"))
+        if content_bytes > request.max_bytes:
+            raise PreparedContextInvariantError("output-budget")
+        return PreparedContextBuild(
+            context=PreparedContext(status="ready", content=content, content_bytes=content_bytes),
+            origins=tuple(item[0] for item in items),
+            fragments=tuple(selection.fragments),
         )
 
     def _select_entries(
@@ -728,3 +782,345 @@ def _truncate_utf8(text: str, byte_budget: int) -> str:
     prefix_budget = byte_budget - len(_ELLIPSIS.encode("utf-8"))
     encoded_prefix = text.encode("utf-8")[:prefix_budget]
     return f"{encoded_prefix.decode('utf-8', errors='ignore')}{_ELLIPSIS}"
+
+
+def _selection_entries(
+    memory_candidates: Sequence[PreparedMemoryCandidates], current_scope_id: str | None
+) -> list[_SelectionEntry]:
+    """Turn the offerable Memory hits into selection entries carrying their citation identity."""
+
+    entries: list[_SelectionEntry] = []
+    for candidates in memory_candidates:
+        if candidates.hits and candidates.memory_ref is None:
+            raise PreparedContextInvariantError("memory-ref-missing")
+        for hit in candidates.hits:
+            if hit.memory_ref != candidates.memory_ref:
+                raise PreparedContextInvariantError("memory-ref-mismatch")
+            if not hit.entry_id.strip() or not hit.entry_version_id.strip() or not hit.text.strip():
+                continue
+            address = MemoryEntryAddress(
+                memory=ArtifactAddress(scope_id=candidates.scope_id, artifact=hit.memory_ref),
+                entry_id=hit.entry_id,
+                entry_version_id=hit.entry_version_id,
+            )
+            origin: PreparedContextOrigin = address
+            if candidates.scope_id == current_scope_id:
+                origin = MemoryCitation(
+                    memory_ref=hit.memory_ref,
+                    entry_id=hit.entry_id,
+                    entry_version_id=hit.entry_version_id,
+                )
+            entries.append(
+                _SelectionEntry(
+                    hit=hit,
+                    address=address,
+                    origin=origin,
+                    citation={
+                        "scope_id": candidates.scope_id,
+                        "memory_ref": hit.memory_ref.model_dump(mode="json"),
+                        "entry_id": hit.entry_id,
+                        "entry_version_id": hit.entry_version_id,
+                    },
+                )
+            )
+    return entries
+
+
+@dataclass(frozen=True)
+class _SelectionSpan:
+    """One literal character span of a Memory entry offered to the byte budget."""
+
+    start: int
+    end: int
+    score: float
+    kind: str
+
+    @property
+    def relevant(self) -> bool:
+        return self.kind != "whole" and self.score > 0.0
+
+
+@dataclass
+class _SelectionEntry:
+    """One Memory hit with the citation identity its fragments must carry."""
+
+    hit: MemoryHit
+    address: MemoryEntryAddress
+    origin: PreparedContextOrigin
+    citation: dict[str, object]
+    spans: tuple[_SelectionSpan, ...] = ()
+
+    def anchor(self) -> _SelectionSpan | None:
+        """Return the best-scored literal sentence, preferring earlier text on a tie."""
+
+        best: _SelectionSpan | None = None
+        for span in self.spans:
+            if not span.relevant:
+                continue
+            if best is None or (span.score, -span.start) > (best.score, -best.start):
+                best = span
+        return best
+
+    def sentences(self) -> tuple[_SelectionSpan, ...]:
+        return tuple(span for span in self.spans if span.kind == "sentence")
+
+    def whole(self) -> _SelectionSpan | None:
+        return next((span for span in self.spans if span.kind == "whole"), None)
+
+
+@dataclass(frozen=True)
+class _SelectionSlot:
+    """One admitted fragment: an entry plus the literal range currently rendered for it."""
+
+    entry: _SelectionEntry
+    start: int
+    end: int
+
+    def item(self) -> tuple[PreparedContextOrigin, dict[str, object], str, int, int]:
+        text = self.entry.hit.text
+        return self.entry.origin, self.entry.citation, text[self.start : self.end], self.start, self.end
+
+    def fragment(self) -> PreparedContextFragment:
+        text = self.entry.hit.text
+        return PreparedContextFragment(address=self.entry.address, start=self.start, end=self.end, text=text[self.start : self.end])
+
+
+class _SelectionBudget:
+    """Admit literal Memory spans, widening them by whole sentences while the budget allows."""
+
+    def __init__(self, max_bytes: int) -> None:
+        self._max_bytes = max_bytes
+        self._slots: list[_SelectionSlot] = []
+        self._covered: dict[str, list[tuple[int, int]]] = {}
+
+    @property
+    def items(self) -> list[tuple[PreparedContextOrigin, dict[str, object], str, int, int]]:
+        return [slot.item() for slot in self._slots]
+
+    @property
+    def fragments(self) -> tuple[PreparedContextFragment, ...]:
+        return tuple(slot.fragment() for slot in self._slots)
+
+    def admit(self, entry: _SelectionEntry, anchor: _SelectionSpan) -> bool:
+        """Place one fragment anchored on ``anchor`` and report whether it was admitted."""
+
+        if len(self._slots) >= _MAX_SELECTION_ITEMS:
+            return False
+        covered = self._covered.setdefault(entry.address.entry_version_id, [])
+        if _is_covered(covered, anchor.start, anchor.end):
+            return False
+        slot = self._widen(entry, anchor)
+        if slot is None:
+            return False
+        self._slots.append(slot)
+        covered.append((slot.start, slot.end))
+        return True
+
+    def _widen(self, entry: _SelectionEntry, anchor: _SelectionSpan) -> _SelectionSlot | None:
+        """Grow an anchor over neighbouring whole sentences, trimming only when even it overflows."""
+
+        if not self._fits(entry, anchor.start, anchor.end):
+            end = self._trim(entry, anchor.start, anchor.end)
+            return None if end is None else _SelectionSlot(entry=entry, start=anchor.start, end=end)
+        sentences = entry.sentences()
+        index = next(
+            (
+                position
+                for position, span in enumerate(sentences)
+                if (span.start, span.end) == (anchor.start, anchor.end)
+            ),
+            None,
+        )
+        if index is None:
+            return _SelectionSlot(entry=entry, start=anchor.start, end=anchor.end)
+        start, end = anchor.start, anchor.end
+        left, right = index - 1, index + 1
+        while True:
+            if right < len(sentences) and self._fits(entry, start, sentences[right].end):
+                end = sentences[right].end
+                right += 1
+                continue
+            if left >= 0 and self._fits(entry, sentences[left].start, end):
+                start = sentences[left].start
+                left -= 1
+                continue
+            break
+        return _SelectionSlot(entry=entry, start=start, end=self._fill(entry, start, end))
+
+    def _fill(self, entry: _SelectionEntry, start: int, end: int) -> int:
+        """Spend leftover budget on the next whole words, so no bytes are wasted on a total stop."""
+
+        text = entry.hit.text
+        best: int | None = None
+        low, high = end + 1, len(text)
+        while low <= high:
+            middle = (low + high) // 2
+            if self._fits(entry, start, middle):
+                best = middle
+                low = middle + 1
+            else:
+                high = middle - 1
+        if best is None:
+            return end
+        while best > end and not text[best - 1].isspace():
+            best -= 1
+        while best > end and text[best - 1].isspace():
+            best -= 1
+        return best if best - end >= _MIN_FRAGMENT_CHARS else end
+
+    def _fits(self, entry: _SelectionEntry, start: int, end: int) -> bool:
+        if not entry.hit.text[start:end].strip():
+            return False
+        candidate = _SelectionSlot(entry=entry, start=start, end=end).item()
+        return _selection_bytes([*self.items, candidate]) <= self._max_bytes
+
+    def _trim(self, entry: _SelectionEntry, start: int, end: int) -> int | None:
+        """Return the largest word-aligned end inside ``(start, end]`` that still fits the budget."""
+
+        best: int | None = None
+        low, high = start + 1, end
+        while low <= high:
+            middle = (low + high) // 2
+            if self._fits(entry, start, middle):
+                best = middle
+                low = middle + 1
+            else:
+                high = middle - 1
+        if best is None:
+            return None
+        text = entry.hit.text
+        while best > start + 1 and not text[best - 1].isspace():
+            best -= 1
+        while best > start + 1 and text[best - 1].isspace():
+            best -= 1
+        return best if best - start >= _MIN_FRAGMENT_CHARS else None
+
+
+_MAX_SELECTION_ITEMS = 24
+_MIN_FRAGMENT_CHARS = 24
+_SENTENCE_TERMINATORS = frozenset(".!?;\n\u3002\uff01\uff1f\uff1b")
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_SELECTION_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "their",
+        "this",
+        "to",
+        "was",
+        "were",
+        "with",
+    }
+)
+
+
+def _query_tokens(query: str) -> frozenset[str]:
+    return frozenset(_TOKEN_PATTERN.findall(query.lower())) - _SELECTION_STOPWORDS
+
+
+def _token_weights(texts: Sequence[str], tokens: frozenset[str]) -> dict[str, float]:
+    """Weight query tokens by rarity across the offered entries, so boilerplate words rank lower."""
+
+    total = max(1, len(texts))
+    document_frequency = dict.fromkeys(tokens, 0)
+    for text in texts:
+        for token in set(_TOKEN_PATTERN.findall(text.lower())) & tokens:
+            document_frequency[token] += 1
+    return {token: math.log(1.0 + total / max(1, document_frequency[token])) for token in tokens}
+
+
+def _rank_selection_entries(
+    entries: Sequence[_SelectionEntry], tokens: frozenset[str]
+) -> list[tuple[_SelectionEntry, _SelectionSpan]]:
+    """Score every entry against the query and order the chosen anchors by relevance."""
+
+    weights = _token_weights([entry.hit.text for entry in entries], tokens)
+    ranked: list[tuple[float, float, int, _SelectionEntry, _SelectionSpan]] = []
+    for position, entry in enumerate(entries):
+        entry.spans = _selection_spans(entry.hit.text, tokens, weights)
+        anchor = entry.anchor()
+        if anchor is not None:
+            ranked.append((anchor.score, float(entry.hit.score), -position, entry, anchor))
+    ranked.sort(key=lambda candidate: (-candidate[0], -candidate[1], -candidate[2]))
+    return [(candidate[3], candidate[4]) for candidate in ranked]
+
+
+def _sentence_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """Split text into sentence-like spans after both ASCII and CJK terminators."""
+
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for index, character in enumerate(text):
+        if character in _SENTENCE_TERMINATORS:
+            spans.append(_trim_span(text, start, index + 1))
+            start = index + 1
+    if start < len(text):
+        spans.append(_trim_span(text, start, len(text)))
+    return tuple(span for span in spans if span[0] < span[1])
+
+
+def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
+def _span_score(text: str, span: tuple[int, int], tokens: frozenset[str], weights: dict[str, float]) -> float:
+    """Score one span by the summed rarity of the distinct query tokens it carries."""
+
+    overlap = set(_TOKEN_PATTERN.findall(text[span[0] : span[1]].lower())) & tokens
+    return sum(weights.get(token, 0.0) for token in overlap)
+
+
+def _selection_spans(text: str, tokens: frozenset[str], weights: dict[str, float]) -> tuple[_SelectionSpan, ...]:
+    """Describe one entry as literal sentence spans plus a whole-entry fallback."""
+
+    spans = [
+        _SelectionSpan(start=start, end=end, score=_span_score(text, (start, end), tokens, weights), kind="sentence")
+        for start, end in _sentence_spans(text)
+    ]
+    whole = _trim_span(text, 0, len(text))
+    if whole[0] < whole[1]:
+        spans.append(_SelectionSpan(start=whole[0], end=whole[1], score=0.0, kind="whole"))
+    return tuple(spans)
+
+
+def _is_covered(spans: Sequence[tuple[int, int]], start: int, end: int) -> bool:
+    return any(start >= left and end <= right for left, right in spans)
+
+
+def _render_selection(
+    items: Sequence[tuple[PreparedContextOrigin, dict[str, object], str, int, int]],
+) -> str:
+    envelope = {
+        "trust": "untrusted_history",
+        "items": [
+            {"citation": citation, "content": text, "start": start, "end": end}
+            for _, citation, text, start, end in items
+        ],
+    }
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    return "\n\n".join((TRUST_POLICY, f"{_BEGIN_MARKER}\n{encoded}\n{_END_MARKER}"))
+
+
+def _selection_bytes(items: Sequence[tuple[PreparedContextOrigin, dict[str, object], str, int, int]]) -> int:
+    return len(_render_selection(items).encode("utf-8"))

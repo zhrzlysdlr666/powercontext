@@ -1180,6 +1180,34 @@ RECURRENCE_OBSERVATION_TABLE = Table(
 
 RECURRENCE_TABLES = (RECURRENCE_MATCH_TABLE, RECURRENCE_OBSERVATION_TABLE)
 
+# One row per registered Source/Memory/Topic node of a Scope's evidence DAG. The body of every
+# reference stays in its own Artifact table: this row only records the binding, the propagation
+# inputs (`parents`/`policy`, the Source's `revision`/`sequence`/`available`) and the derived
+# `state`, so search and Context can decide eligibility without reading the evidence again.
+SOURCE_LIFECYCLE_TABLE = Table(
+    "pc_source_lifecycle_nodes",
+    SHARED_METADATA,
+    Column("scope_id", identity_string(MAX_SCOPE_ID_LENGTH), primary_key=True),
+    Column("node_id", identity_string(MAX_SOURCE_ID_LENGTH), primary_key=True),
+    Column("family", String(16), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("parents", _entry_text_type(), nullable=False),
+    Column("policy", String(8), nullable=False),
+    Column("reference", _entry_text_type(), nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("sequence", Integer, nullable=False),
+    Column("available", Boolean, nullable=False),
+    Column("state", String(16), nullable=False),
+    ForeignKeyConstraint(("scope_id",), ("pc_scopes.scope_id",), ondelete="CASCADE"),
+    UniqueConstraint("scope_id", "ordinal", name="uq_pc_source_lifecycle_ordinal"),
+    CheckConstraint("family IN ('source', 'memory', 'topic')", name="ck_pc_source_lifecycle_family"),
+    CheckConstraint("policy IN ('all', 'any')", name="ck_pc_source_lifecycle_policy"),
+    CheckConstraint("state IN ('active', 'inactive')", name="ck_pc_source_lifecycle_state"),
+    CheckConstraint("revision >= 0", name="ck_pc_source_lifecycle_revision_non_negative"),
+    CheckConstraint("sequence >= 0", name="ck_pc_source_lifecycle_sequence_non_negative"),
+    CheckConstraint("ordinal > 0", name="ck_pc_source_lifecycle_ordinal_positive"),
+)
+
 BUILTIN_TABLES = (
     SCOPE_TABLES
     + SHARED_TABLES
@@ -1187,5 +1215,5 @@ BUILTIN_TABLES = (
     + MEMORY_TABLES
     + STATISTICS_TABLES
     + RECURRENCE_TABLES
-    + (ARTIFACT_TAGS_TABLE, DREAM_RUNS_TABLE, RECEIPT_MIGRATION_REVIEW_TABLE)
+    + (ARTIFACT_TAGS_TABLE, DREAM_RUNS_TABLE, RECEIPT_MIGRATION_REVIEW_TABLE, SOURCE_LIFECYCLE_TABLE)
 )

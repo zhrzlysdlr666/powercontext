@@ -248,6 +248,7 @@ from powercontext.builtin.runtime.recall_sufficiency import (
     build_recall_candidates,
     recall_effort,
 )
+from powercontext.builtin.runtime.source_lifecycle import SourceLifecycleApplication
 from powercontext.builtin.runtime.statistics import RelationalScopedStatistics, overview_selection
 from powercontext.builtin.scope import ScopeApplication, ScopeDescriptor, ScopeSelection
 from powercontext.builtin.scope.subject_sources import SubjectSourceService
@@ -2668,6 +2669,7 @@ class ScopedTopicMemoryApplication:
                     embedding_timeout_seconds,
                 )
         observer = self._runtime._topic_memory_search_observer
+        result = await self._without_unsupported_topics(result)
         if observer is not None:
             try:
                 observer(result.mode, used_fallback)
@@ -2684,6 +2686,22 @@ class ScopedTopicMemoryApplication:
                     },
                 )
         return result
+
+    async def _without_unsupported_topics(self, result: TopicMemorySearchResult) -> TopicMemorySearchResult:
+        """Drop Topic Memory hits whose evidence no longer supports them.
+
+        Eligibility lives in the Scope's lifecycle graph, not in the retrieval index, so it is
+        applied here: both the direct search and Context assembly read through this method.
+        """
+
+        if not result.hits:
+            return result
+        unsupported = await self._runtime.lifecycle.inactive_topic_artifact_ids(self.scope_id)
+        if not unsupported:
+            return result
+        return result.model_copy(
+            update={"hits": tuple(hit for hit in result.hits if hit.artifact_ref.artifact_id not in unsupported)}
+        )
 
     async def _search_with_embedding(
         self,
@@ -3035,6 +3053,10 @@ class BuiltinRuntime:
         if scope_cache_size < 1:
             raise _RuntimeConfigurationError("scope_cache_size")
         self._provider = provider
+        # The built-in provider owns the relational database that also stores the Source
+        # lifecycle graph. A provider without one keeps the Runtime usable but cannot persist
+        # lifecycle state, so the service reports that instead of silently forgetting it.
+        self._lifecycle_database = getattr(provider, "database", None)
         self._capabilities = capabilities
         self._review_service = review_service
         self.profiles = profiles
@@ -3109,6 +3131,7 @@ class BuiltinRuntime:
         self.handoff = HandoffApplication(self)
         self.work = WorkApplication(self)
         self.memory = MemoryApplication(self)
+        self.lifecycle = SourceLifecycleApplication(self)
         self.topic_memory = TopicMemoryApplication(self)
         self.records = RecordApplication(self)
         self.prompts = PromptApplication(self)
