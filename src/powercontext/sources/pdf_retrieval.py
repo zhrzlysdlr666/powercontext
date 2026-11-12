@@ -62,12 +62,62 @@ BM25_B = 0.75
 _WORD = re.compile(r"[a-z]+|\d+")
 _PAGE_SUFFIX = re.compile(r":(\d+)$")
 _ITEM_HEADING = re.compile(r"^Item\s+(\d+[A-C]?)\.", re.IGNORECASE)
-_PRIMARY_STATEMENT = re.compile(
-    r"consolidated statements? of (operations|income|earnings|cash flows?|financial position|equity)"
-    r"|consolidated balance sheets?"
-    r"|statements? of consolidated (income|operations|cash flows?|financial position|equity)",
-    re.IGNORECASE,
-)
+_COMPACT = re.compile(r"\s+")
+# Titles of the primary statements, compared with every space removed so that a heading
+# broken across lines or inside a word still matches.
+_STATEMENT_MARKERS: dict[str, tuple[str, ...]] = {
+    "balance": (
+        "consolidatedbalancesheets",
+        "consolidatedbalancesheet",
+        "consolidatedstatementoffinancialposition",
+        "consolidatedstatementsoffinancialposition",
+    ),
+    "income": (
+        "consolidatedstatementsofoperations",
+        "consolidatedstatementofoperations",
+        "consolidatedstatementsofincome",
+        "consolidatedstatementofincome",
+        "consolidatedstatementsofearnings",
+        "statementsofoperations",
+        "statementsofincome",
+    ),
+    "cash": (
+        "consolidatedstatementsofcashflows",
+        "consolidatedstatementofcashflows",
+        "statementsofcashflows",
+    ),
+    "equity": (
+        "consolidatedstatementofchangesinequity",
+        "consolidatedstatementsofchangesinequity",
+        "consolidatedstatementsofstockholdersequity",
+        "consolidatedstatementofstockholdersequity",
+        "consolidatedstatementsofcomprehensiveincome",
+        "consolidatedstatementofcomprehensiveincome",
+    ),
+}
+
+# The statement a question names, so the statement view can put that page first instead of
+# handing the first statement in the document the top slot.
+_STATEMENT_ALIASES: dict[str, re.Pattern[str]] = {
+    "balance": re.compile(r"balance\s+sheet|financial\s+position", re.IGNORECASE),
+    "income": re.compile(
+        r"(income|operations|earnings)\s+statement"
+        r"|statement\s+of\s+(operations|income|earnings)"
+        r"|p&l|profit\s+and\s+loss",
+        re.IGNORECASE,
+    ),
+    "cash": re.compile(r"cash\s*flow", re.IGNORECASE),
+    "equity": re.compile(
+        r"(stockholders|shareholders)'?\s*equity|changes\s+in\s+equity", re.IGNORECASE
+    ),
+}
+
+
+def _named_statements(question: str) -> frozenset[str]:
+    """Statement kinds the question explicitly points at, if any."""
+
+    return frozenset(kind for kind, pattern in _STATEMENT_ALIASES.items() if pattern.search(question))
+
 
 # Question scaffolding that carries no page signal: every FinanceBench question ends with
 # an instruction about how to answer, and those sentences flood a short query.
@@ -123,6 +173,44 @@ _EXPANSIONS: dict[str, tuple[str, ...]] = {
     "debt": ("borrowings",),
     "profitability": ("margin", "income"),
     "profitable": ("margin", "income"),
+}
+
+# Filings spell a line item out; questions abbreviate it. Only one-step expansions of standard
+# accounting vocabulary live here, so no document or company is singled out.
+_ABBREVIATIONS: dict[str, tuple[str, ...]] = {
+    "ppne": ("property", "plant", "equipment"),
+    "ppe": ("property", "plant", "equipment"),
+    "property": ("plant", "equipment"),
+    "cogs": ("cost", "revenue", "sales"),
+    "sgna": ("selling", "general", "administrative"),
+    "sga": ("selling", "general", "administrative"),
+    "capex": ("capital", "expenditures", "additions"),
+    "opex": ("operating", "expenses"),
+    "ebitda": ("operating", "income", "depreciation", "amortization"),
+    "ebit": ("operating", "income"),
+    "eps": ("earnings", "share"),
+    "dso": ("receivables", "days"),
+    "dpo": ("payables", "days"),
+    "dio": ("inventory", "days"),
+    "ocf": ("operating", "cash", "flow"),
+    "fcf": ("free", "cash", "flow"),
+    "roe": ("return", "equity"),
+    "roa": ("return", "assets"),
+    "nwc": ("working", "capital"),
+    "revenue": ("sales", "revenues"),
+    "revenues": ("sales", "revenue"),
+    "sales": ("revenue", "revenues"),
+    "profit": ("income", "earnings"),
+    "turnover": ("sales", "revenue", "inventory"),
+    "inventory": ("inventories",),
+    "receivable": ("receivables",),
+    "payable": ("payables",),
+    "tax": ("taxes", "income"),
+    "lease": ("leases", "rent"),
+    "pension": ("retirement", "benefit"),
+    "acquisition": ("acquired", "acquisitions"),
+    "backlog": ("remaining", "performance", "obligations"),
+    "impairment": ("impairments", "charges"),
 }
 
 # A question that names a figure or a statement line is answered inside the primary
@@ -206,6 +294,11 @@ _RANK_DEPTH = 40
 # Credit for being ranked at all by the most trusted view that noticed the page, so a page
 # carried by one strong view is not drowned by pages that several weak views happen to touch.
 _SINGLE_VIEW_BONUS = 0.35
+# How far a strong page reaches into its physical neighbours, and how much it lends them.
+_NEIGHBOUR_DECAY = ((1, 0.55), (2, 0.3))
+_NEIGHBOUR_SPREAD = 0.32
+# Flat credit for the statement the question names.
+_STATEMENT_BONUS = 0.24
 # The business description occupies the opening pages of a filing; a quarter of a million
 # characters of notes follow it.
 _FRONT_PAGES = 25
@@ -237,7 +330,7 @@ def _expand(terms: Sequence[str]) -> list[str]:
         # A filing writes the plural of the thing a question asks about in the singular
         # ("revenue" -> "Revenues:"). One-letter folding covers that without a stemmer.
         variants = [term[:-1]] if term.endswith("s") and len(term) > 3 else [term + "s"]
-        for extra in (*_EXPANSIONS.get(term, ()), *variants):
+        for extra in (*_EXPANSIONS.get(term, ()), *_ABBREVIATIONS.get(term, ()), *variants):
             if extra and extra not in expanded:
                 expanded.append(extra)
     return expanded
@@ -288,7 +381,12 @@ class _Corpus:
         self.count = len(self.pages)
         self.average_length = (sum(self.lengths) / self.count) if self.count else 0.0
         self.positions: dict[int, int] = {page.page_number: position for position, page in enumerate(self.pages)}
-        self.statements = tuple(position for position, page in enumerate(self.pages) if self._opens_statement(page.text))
+        self.statement_kinds: dict[int, tuple[str, ...]] = {}
+        for position, page in enumerate(self.pages):
+            kinds = self._statement_kinds(page.text)
+            if kinds:
+                self.statement_kinds[position] = kinds
+        self.statements = tuple(self.statement_kinds)
         self.headings: dict[str, list[int]] = defaultdict(list)
         for position, page in enumerate(self.pages):
             for title in self._titles(page.text):
@@ -329,8 +427,42 @@ class _Corpus:
         return titles
 
     @staticmethod
-    def _opens_statement(text: str) -> bool:
-        return bool(_PRIMARY_STATEMENT.search(text[:1500]))
+    def _statement_kinds(text: str) -> tuple[str, ...]:
+        """Which primary statements this page opens, if any.
+
+        Filings break a heading across lines and even inside a word — ``Consolidated Balance
+        Shee`` / ``t`` — so the comparison drops every space before looking for the title.
+        """
+
+        compact = _COMPACT.sub("", text[:1200]).lower()
+        return tuple(
+            kind
+            for kind, markers in _STATEMENT_MARKERS.items()
+            if any(marker in compact for marker in markers)
+        )
+
+    def statement_view(
+        self, concept: Sequence[str], expanded: Sequence[str], question: str
+    ) -> list[int]:
+        """Primary statement pages, the statement the question names first.
+
+        A filing prints four statements within a couple of pages of each other, and a page
+        number sort would promote whichever comes first in the document. Ordering the view by
+        the statement the question names, then by how well the page matches the question's own
+        line items, puts the statement that answers the question at the head of the view.
+        """
+
+        if not self.statements:
+            return []
+        named = _named_statements(question)
+        lexical = self.bm25(expanded)
+
+        def key(position: int) -> tuple[int, float, int]:
+            kinds = self.statement_kinds.get(position, ())
+            off_topic = 0 if (not named or named.intersection(kinds)) else 1
+            return (off_topic, -lexical.get(position, 0.0), self.pages[position].page_number)
+
+        return sorted(self.statements, key=key)
 
     def idf(self, term: str) -> float:
         frequency = len(self.postings.get(term, ()))
@@ -469,7 +601,7 @@ class _Corpus:
             # merely repeats the metric most often. A question about a disclosure ("legal
             # battles") would only give those pages' slots away, so the view stays closed
             # unless the question names a figure or a statement line.
-            "statement": list(self.statements) if _asks_for_figure(concept_terms) else [],
+            "statement": self.statement_view(concept_terms, expanded, question),
             "heading": self.headings_for(concept_terms),
             "table": self.tables_for(expanded),
             "front": self.front_matter(expanded) if _asks_about_business(concept_terms) else [],
@@ -490,7 +622,36 @@ class _Corpus:
             position: score + _SINGLE_VIEW_BONUS * credited[position]
             for position, score in scores.items()
         }
-        ordered = sorted(fused.items(), key=lambda item: (-item[1], self.pages[item[0]].page_number))
+        # A filing splits one statement across facing pages, so the page that answers a
+        # question is often the page before or after the strongest hit rather than a page that
+        # repeats the question's words. Let every strong page lend part of its score to its
+        # physical neighbours; the borrowed score decays with distance, so a page two lines
+        # away from a top hit outranks a page no view believed in at all.
+        spread: dict[int, float] = defaultdict(float)
+        for position, score in fused.items():
+            if score <= 0.0:
+                continue
+            for delta, decay in _NEIGHBOUR_DECAY:
+                for near in (position - delta, position + delta):
+                    if 0 <= near < self.count:
+                        spread[near] = max(spread[near], score * decay)
+        combined = dict(fused)
+        for position, value in spread.items():
+            borrowed = _NEIGHBOUR_SPREAD * value
+            combined[position] = combined.get(position, 0.0) + borrowed
+        # The four statements sit within a page or two of each other and share most of their
+        # vocabulary, so a line-item question can be answered by the wrong one. When the
+        # question names a statement, every matching page gets a flat credit; the page whose
+        # own line items match the question still wins on the view scores.
+        if _asks_for_figure(concept_terms):
+            named = _named_statements(question)
+            for position in self.statements:
+                if named and not named.intersection(self.statement_kinds.get(position, ())):
+                    continue
+                combined[position] = combined.get(position, 0.0) + _STATEMENT_BONUS
+        ordered = sorted(
+            combined.items(), key=lambda item: (-item[1], self.pages[item[0]].page_number)
+        )
         return [self.pages[position] for position, _score in ordered[:limit]]
 
 
