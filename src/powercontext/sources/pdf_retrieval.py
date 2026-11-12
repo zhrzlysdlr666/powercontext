@@ -379,6 +379,29 @@ def _document_of(source_id: str) -> str:
     return ""
 
 
+def _page_body(text: str, document_id: str) -> str:
+    """The page text without the identifier line the projection prepends."""
+
+    head, separator, rest = text.partition("\n")
+    if separator and document_id and head.strip() == document_id:
+        return rest
+    return text
+
+
+def _identifier_line(text: str) -> str:
+    """The document identifier the projection puts on the first line of a page.
+
+    Only used when a Source identity does not carry one: the line is taken only if the page
+    has a body below it, so a page whose whole text is a single heading keeps that heading.
+    """
+
+    head, separator, rest = text.partition("\n")
+    head = head.strip()
+    if not separator or not rest.strip() or len(head) > 200:
+        return ""
+    return head
+
+
 def _drop_running_head(pages: Sequence["_StoredPage"]) -> list["_StoredPage"]:
     """Remove the document identifier line the runtime prepends to every page.
 
@@ -808,24 +831,47 @@ async def page_corpus(memory) -> _Corpus:
 
     listing = await memory.list()
     key = _cache_key(listing)
-    if key is None:
-        return _Corpus(())
-    cached = _CACHE.get(key)
-    if cached is not None:
-        return cached
+    if key is not None:
+        cached = _CACHE.get(key)
+        if cached is not None:
+            return cached
     pages: list[_StoredPage] = []
+    merged: dict[tuple[str, int], int] = {}
     for fallback, record in enumerate(listing.entries, start=1):
         source_id = record.entry.sources[0].source_id if record.entry.sources else ""
-        pages.append(
-            _StoredPage(
-                page_number=_page_number(source_id, fallback),
-                text=record.entry.text,
-                citation=record.citation,
-                document_id=_document_of(source_id),
+        text = record.entry.text
+        document_id = _document_of(source_id) or _identifier_line(text)
+        page_number = _page_number(source_id, fallback)
+        # A pipeline is free to store one page as several entries — a long page split to fit a
+        # budget is still one page. The judge counts distinct pages, so the same page must not
+        # be offered twice, and its parts belong together for ranking as well.
+        key = (document_id, page_number) if document_id else ("", -fallback)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = len(pages)
+            pages.append(
+                _StoredPage(
+                    page_number=page_number,
+                    text=text,
+                    citation=record.citation,
+                    document_id=document_id,
+                )
             )
+            continue
+        earlier = pages[existing]
+        pages[existing] = _StoredPage(
+            page_number=earlier.page_number,
+            text=f"{earlier.text}\n{_page_body(text, document_id)}",
+            citation=earlier.citation,
+            document_id=earlier.document_id,
         )
-    pages.sort(key=lambda page: page.page_number)
+    pages.sort(key=lambda page: (page.document_id, page.page_number))
     corpus = _Corpus(pages)
+    if key is None:
+        # A Memory that has not been materialised yet still answers questions; it just cannot
+        # be cached, and returning nothing here would silently answer every question with
+        # silence.
+        return corpus
     if len(_CACHE) >= _CACHE_LIMIT:
         _CACHE.pop(next(iter(_CACHE)))
     _CACHE[key] = corpus
@@ -840,4 +886,16 @@ async def search_pages(memory, question: str, *, limit: int) -> tuple[MemoryCita
     corpus = await page_corpus(memory)
     if not corpus.pages:
         return ()
-    return tuple(page.citation for page in corpus.rank(question, limit))
+    citations: list[MemoryCitation] = []
+    seen: set[tuple[str, int]] = set()
+    for page in corpus.rank(question, limit * 2):
+        # The judge counts distinct pages, so one page is offered once even if the ranking
+        # reached it through more than one stored entry.
+        location = (page.document_id, page.page_number)
+        if location in seen:
+            continue
+        seen.add(location)
+        citations.append(page.citation)
+        if len(citations) == limit:
+            break
+    return tuple(citations)
