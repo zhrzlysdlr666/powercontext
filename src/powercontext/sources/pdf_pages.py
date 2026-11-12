@@ -69,7 +69,14 @@ class PDFPageSource(Source):
 
 
 def pdf_page_source_id(document_id: str, document_sha256: str, page_number: int) -> str:
-    """Build the stable page identity ``pdf:<document>:<revision>:<page>``."""
+    """Build the stable page identity ``pdf:<document>:<revision>:<page>``.
+
+    The published contract caps an identity at 256 characters, and a document identifier is
+    free-form: a caller may hand over a whole path or a long title. A readable identity is
+    kept when it fits so a citation stays legible, and from the same three values a fixed
+    64-character digest of the identifier is used when it does not. Both forms are stable,
+    differ between documents, and stay well inside the cap.
+    """
 
     if not isinstance(document_id, str) or not document_id:
         raise ValueError("document_id must be a non-empty string")
@@ -79,13 +86,14 @@ def pdf_page_source_id(document_id: str, document_sha256: str, page_number: int)
         raise ValueError("document_sha256 must be a 64-character hex digest")
     if not isinstance(page_number, int) or isinstance(page_number, bool) or page_number < 1:
         raise ValueError("page_number must be a positive integer")
-    identity = (
+    readable = (
         f"{_PDF_ID_PREFIX}{quote(document_id, safe='')}:"
         f"{quote(document_sha256, safe='')}:{page_number}"
     )
-    if len(identity) > MAX_SOURCE_ID_LENGTH:
-        raise ValueError(f"source identity must not exceed {MAX_SOURCE_ID_LENGTH} characters")
-    return identity
+    if len(readable) <= MAX_SOURCE_ID_LENGTH:
+        return readable
+    digest = sha256(document_id.encode("utf-8")).hexdigest()
+    return f"{_PDF_ID_PREFIX}h:{digest}:{quote(document_sha256, safe='')}:{page_number}"
 
 
 def _fail(message: str) -> None:
