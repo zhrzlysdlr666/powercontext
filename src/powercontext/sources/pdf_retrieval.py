@@ -63,6 +63,8 @@ _WORD = re.compile(r"[a-z]+|\d+")
 _PAGE_SUFFIX = re.compile(r":(\d+)$")
 _ITEM_HEADING = re.compile(r"^Item\s+(\d+[A-C]?)\.", re.IGNORECASE)
 _COMPACT = re.compile(r"\s+")
+# A page names itself in its first few non-empty lines; text further down only refers to it.
+_TITLE_LINES = 5
 # Titles of the primary statements, compared with every space removed so that a heading
 # broken across lines or inside a word still matches.
 _STATEMENT_MARKERS: dict[str, tuple[str, ...]] = {
@@ -285,6 +287,7 @@ _VIEW_WEIGHTS = (
     ("concept", 1.0),
     ("lexical", 1.0),
     ("front", 0.6),
+    ("prose", 0.3),
 )
 # Rank decay: a page placed first by a view scores 1/(k+1). The decay is deliberately steep
 # because the second-best page for a question is usually the neighbouring page of the best
@@ -302,6 +305,8 @@ _STATEMENT_BONUS = 0.24
 # The business description occupies the opening pages of a filing; a quarter of a million
 # characters of notes follow it.
 _FRONT_PAGES = 25
+# How hard a page's share of digits counts against it when the question wants a sentence.
+_PROSE_DIGIT_PENALTY = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +314,12 @@ class _StoredPage:
     page_number: int
     text: str
     citation: MemoryCitation
+
+
+def _title_lines(text: str) -> list[str]:
+    """The first non-empty lines of a page: where a filing prints its own heading."""
+
+    return [line.strip() for line in text.splitlines() if line.strip()][:_TITLE_LINES]
 
 
 def _words(text: str) -> list[str]:
@@ -434,7 +445,7 @@ class _Corpus:
         Shee`` / ``t`` — so the comparison drops every space before looking for the title.
         """
 
-        compact = _COMPACT.sub("", text[:1200]).lower()
+        compact = _COMPACT.sub("", " ".join(_title_lines(text))).lower()
         return tuple(
             kind
             for kind, markers in _STATEMENT_MARKERS.items()
@@ -578,6 +589,24 @@ class _Corpus:
         opening = [position for position in self.ordered(scores) if position < _FRONT_PAGES]
         return opening
 
+    def prose_pages(self, terms: Sequence[str]) -> list[int]:
+        """Pages that answer in words, ordered for a question that asks for words.
+
+        A filing restates each figure in a dozen tables, so a page that explains the business in
+        a sentence competes with pages that repeat the question's words beside columns of
+        digits. Discounting a page by the share of it that is numeric is what separates "we
+        derive most of our revenue from a limited number of airlines" from a table of the same
+        revenue split by segment.
+        """
+
+        scores = self.bm25(terms)
+        damped = {
+            position: score
+            / (1.0 + _PROSE_DIGIT_PENALTY * self._digits.get(position, 0) / max(self.lengths[position], 1))
+            for position, score in scores.items()
+        }
+        return self.ordered(damped)
+
     def _discriminating(self, terms: Sequence[str]) -> list[str]:
         """Drop the words that every page carries: the issuer name and the fiscal year.
 
@@ -605,6 +634,7 @@ class _Corpus:
             "heading": self.headings_for(concept_terms),
             "table": self.tables_for(expanded),
             "front": self.front_matter(expanded) if _asks_about_business(concept_terms) else [],
+            "prose": self.prose_pages(expanded) if not _asks_for_figure(concept_terms) else [],
         }
         # Score every page by how highly each view ranks it and keep the best ``limit``.
         # Handing each view a fixed number of slots does not work here: the statement and
@@ -652,7 +682,8 @@ class _Corpus:
         ordered = sorted(
             combined.items(), key=lambda item: (-item[1], self.pages[item[0]].page_number)
         )
-        return [self.pages[position] for position, _score in ordered[:limit]]
+        picked = [position for position, _score in ordered[:limit]]
+        return [self.pages[position] for position in picked]
 
 
 _CACHE: dict[tuple[str, int, int], _Corpus] = {}
