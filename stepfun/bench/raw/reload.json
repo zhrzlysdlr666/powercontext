@@ -1,0 +1,23 @@
+{
+ "url": "http://127.0.0.1:5180/",
+ "rows": [
+  {
+   "round": 1,
+   "ready_ms": 1865,
+   "load": "1.71 s",
+   "badge": "推理后端：WASM · q8 · 4 线程"
+  },
+  {
+   "round": 2,
+   "ready_ms": 1091,
+   "load": "1.02 s",
+   "badge": "推理后端：WASM · q8 · 4 线程"
+  },
+  {
+   "round": 3,
+   "ready_ms": 1058,
+   "load": "982.3 ms",
+   "badge": "推理后端：WASM · q8 · 4 线程"
+  }
+ ]
+}

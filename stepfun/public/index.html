@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>端侧迷你知识库 · 浏览器向量化 + seekdb 混合检索</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f8cff'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header>
+  <h1>端侧迷你知识库</h1>
+  <p class="sub">文档在浏览器本地向量化 → 写入 seekdb → 一条 SQL 完成向量与全文混合检索</p>
+  <div class="badges">
+    <span id="backend" class="badge badge-wait">推理后端：检测中…</span>
+    <span id="model" class="badge">模型：bge-small-zh-v1.5 (INT8/q8)</span>
+    <span id="docs" class="badge">知识库：0 篇</span>
+  </div>
+  <p id="backendWhy" class="why"></p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. 导入语料</h2>
+    <p class="hint">支持 <code>.txt</code> / <code>.md</code> / 直接粘贴。文本按空行与长度切块，全部向量化在本地完成。</p>
+    <textarea id="corpus" placeholder="粘贴文本，或用下面的按钮选择文件…"></textarea>
+    <div class="row">
+      <input type="file" id="file" accept=".txt,.md,.json" multiple />
+      <label class="inline">知识库 <select id="kb"></select></label>
+      <button id="btnNewKb" class="ghost">新建</button>
+      <label class="inline">批大小 <input type="number" id="batch" value="8" min="1" max="32" /></label>
+      <button id="btnImport" class="primary">向量化并写入 seekdb</button>
+      <button id="btnReset" class="ghost">清空当前库</button>
+    </div>
+    <div class="progress"><div id="bar"></div></div>
+    <div id="importLog" class="log"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. 混合检索</h2>
+    <p class="hint">查询向量同样在本地生成；向量分与全文分在 seekdb 内融合排序（<code>MATCH … AGAINST</code> 与 <code>L2_DISTANCE</code> 同一条 SQL）。</p>
+    <div class="row">
+      <input type="text" id="q" placeholder="例如：哪些文档讲了云服务订阅收入的增长？" />
+      <label class="inline">K <input type="number" id="k" value="5" min="1" max="50" /></label>
+      <button id="btnSearch" class="primary">检索</button>
+      <button id="btnBench" class="ghost">跑 10 次基准</button>
+    </div>
+    <ol id="results" class="results"></ol>
+  </section>
+
+  <section class="card">
+    <h2>3. 计时</h2>
+    <table id="timings">
+      <tbody>
+        <tr><td>模型加载（首次）</td><td id="t-load">—</td></tr>
+        <tr><td>文档向量化</td><td id="t-embed">—</td></tr>
+        <tr><td>写入 seekdb（含提交）</td><td id="t-write">—</td></tr>
+        <tr><td>查询向量化</td><td id="t-qembed">—</td></tr>
+        <tr><td>seekdb 混合检索</td><td id="t-query">—</td></tr>
+        <tr><td>端到端（提交查询 → 结果可见）</td><td id="t-e2e">—</td></tr>
+      </tbody>
+    </table>
+    <div id="benchLog" class="log"></div>
+    <div id="batchLog" class="log"></div>
+  </section>
+</main>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

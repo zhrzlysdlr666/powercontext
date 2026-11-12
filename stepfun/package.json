@@ -1,0 +1,22 @@
+{
+  "name": "seekdb-stepfun-onside-kb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "端侧迷你知识库：浏览器本地向量化 + seekdb 内嵌实例完成向量与全文混合检索",
+  "scripts": {
+    "start": "node server.mjs",
+    "model": "node scripts/fetch-model.mjs",
+    "quantize": "python scripts/quantize.py",
+    "bench:quality": "node bench/quality.mjs",
+    "bench:refresh": "node bench/refresh_test.mjs"
+  },
+  "dependencies": {
+    "@oceanbase/seekdb-node": "^1.4.0",
+    "mysql2": "^3.24.6",
+    "@huggingface/transformers": "3.7.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

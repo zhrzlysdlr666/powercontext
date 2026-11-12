@@ -1,0 +1,152 @@
+{
+  "generated_at": "2026-11-12T06:34:54.348Z",
+  "kb": "default",
+  "queries": 20,
+  "fused_median_ms": 2.635,
+  "split_median_ms": 2.779,
+  "ratio": 1.055,
+  "top5_overlap_mean": 3.55,
+  "top1_same": 20,
+  "per_query": [
+    {
+      "q": "云服务订阅收入为什么增长",
+      "fused_ms": 121.6183,
+      "split_ms": 10.7564,
+      "top5_overlap": 5,
+      "top1_same": true
+    },
+    {
+      "q": "净利润下滑的一次性因素",
+      "fused_ms": 10.1386,
+      "split_ms": 3.0161,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "研发投入的方向",
+      "fused_ms": 3.1949,
+      "split_ms": 3.262,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "现金流与资本开支",
+      "fused_ms": 2.4586,
+      "split_ms": 3.7961,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "端侧推理为什么要在浏览器里跑",
+      "fused_ms": 3.4134,
+      "split_ms": 3.8235,
+      "top5_overlap": 5,
+      "top1_same": true
+    },
+    {
+      "q": "WebGPU 与 WebAssembly 的差异",
+      "fused_ms": 2.5477,
+      "split_ms": 2.2757,
+      "top5_overlap": 2,
+      "top1_same": true
+    },
+    {
+      "q": "HNSW 索引的取舍",
+      "fused_ms": 2.8013,
+      "split_ms": 2.5469,
+      "top5_overlap": 4,
+      "top1_same": true
+    },
+    {
+      "q": "中文分词怎么做",
+      "fused_ms": 2.3971,
+      "split_ms": 2.3987,
+      "top5_overlap": 5,
+      "top1_same": true
+    },
+    {
+      "q": "向量和全文如何融合",
+      "fused_ms": 2.4836,
+      "split_ms": 2.3965,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "崩溃恢复依赖什么机制",
+      "fused_ms": 2.326,
+      "split_ms": 3.0423,
+      "top5_overlap": 5,
+      "top1_same": true
+    },
+    {
+      "q": "批量写入的事务大小",
+      "fused_ms": 3.9357,
+      "split_ms": 2.931,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "向量索引的增量维护",
+      "fused_ms": 2.6689,
+      "split_ms": 2.9196,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "向量列的维度校验",
+      "fused_ms": 2.7795,
+      "split_ms": 2.7299,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "过滤条件与 TopK 的先后",
+      "fused_ms": 3.3748,
+      "split_ms": 2.9215,
+      "top5_overlap": 4,
+      "top1_same": true
+    },
+    {
+      "q": "Recall@K 与 nDCG 的区别",
+      "fused_ms": 2.2062,
+      "split_ms": 2.0672,
+      "top5_overlap": 2,
+      "top1_same": true
+    },
+    {
+      "q": "INT8 量化的体积收益",
+      "fused_ms": 2.1692,
+      "split_ms": 2.7532,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "降级策略怎么设计",
+      "fused_ms": 2.0605,
+      "split_ms": 2.8039,
+      "top5_overlap": 3,
+      "top1_same": true
+    },
+    {
+      "q": "批处理为什么能提升吞吐",
+      "fused_ms": 2.6007,
+      "split_ms": 2.0366,
+      "top5_overlap": 5,
+      "top1_same": true
+    },
+    {
+      "q": "索引刷新与可见性",
+      "fused_ms": 2.2176,
+      "split_ms": 2.6278,
+      "top5_overlap": 4,
+      "top1_same": true
+    },
+    {
+      "q": "文档切块大小怎么选",
+      "fused_ms": 2.7831,
+      "split_ms": 2.6952,
+      "top5_overlap": 3,
+      "top1_same": true
+    }
+  ]
+}

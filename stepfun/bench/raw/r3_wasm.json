@@ -1,0 +1,105 @@
+{
+ "mode": "wasm",
+ "url": "http://127.0.0.1:5180/?backend=wasm",
+ "webgpu_requested": false,
+ "steps": {
+  "model_ready_ms": 918,
+  "import": {
+   "log": "已写入「default」25 块，该库共 25 块。向量化 396.9 ms，写入 106.7 ms。\n提交后立即检索可见（seekdb 的全文与向量索引随事务生效），无需手动刷新。",
+   "embed": "396.9 ms · 25 块 · 63.0 块/s",
+   "write": "106.7 ms（服务端 95.1 ms）",
+   "docs": "知识库「default」：25 块 · 512 维 · 向量索引 已建"
+  },
+  "queries": [
+   {
+    "q": "云服务订阅收入为什么增长",
+    "top3": [
+     {
+      "title": "1. 2026 年第二季度云服务与订阅收入同比增长百分之十二，…",
+      "metrics": "score 0.635 · 全文 9.980 · L2 0.719"
+     },
+     {
+      "title": "2. 批量写入时把多条记录放在一个事务里提交可以显著降低提交开…",
+      "metrics": "score 0.294 · 全文 0.000 · L2 1.044"
+     },
+     {
+      "title": "3. 研发投入继续上升，新增人力集中在数据库内核、查询优化器和…",
+      "metrics": "score 0.293 · 全文 0.000 · L2 1.047"
+     }
+    ],
+    "qembed": "4.4 ms",
+    "db": "2.6 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "12.6 ms"
+   },
+   {
+    "q": "净利润下滑的一次性因素",
+    "top3": [
+     {
+      "title": "1. 同期净利润同比下滑百分之六，财务口径的解释是汇率波动带来…",
+      "metrics": "score 0.586 · 全文 5.904 · L2 0.724"
+     },
+     {
+      "title": "2. 2026 年第二季度云服务与订阅收入同比增长百分之十二，…",
+      "metrics": "score 0.372 · 全文 1.056 · L2 1.080"
+     },
+     {
+      "title": "3. 现金流方面，经营性现金流为正，但自由现金流受数据中心扩容…",
+      "metrics": "score 0.315 · 全文 0.103 · L2 0.966"
+     }
+    ],
+    "qembed": "3.6 ms",
+    "db": "3.1 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "14.9 ms"
+   },
+   {
+    "q": "如何保证崩溃后已提交数据不丢",
+    "top3": [
+     {
+      "title": "1. 崩溃恢复要求已经确认提交的事务在进程被强制终止后依然存在…",
+      "metrics": "score 0.524 · 全文 3.884 · L2 0.834"
+     },
+     {
+      "title": "2. 进程被强制终止后的恢复测试会复用同一个数据目录重启，检查…",
+      "metrics": "score 0.515 · 全文 4.146 · L2 0.929"
+     },
+     {
+      "title": "3. 批量写入时把多条记录放在一个事务里提交可以显著降低提交开…",
+      "metrics": "score 0.416 · 全文 1.564 · L2 0.974"
+     }
+    ],
+    "qembed": "5.2 ms",
+    "db": "3.2 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "14.2 ms"
+   },
+   {
+    "q": "端侧推理为什么要做量化",
+    "top3": [
+     {
+      "title": "1. 批量推理是端侧性能优化的第一手段。把多条文本拼成一个批次…",
+      "metrics": "score 0.500 · 全文 3.571 · L2 0.930"
+     },
+     {
+      "title": "2. 端侧推理指的是模型计算完全发生在用户设备上，典型实现是浏…",
+      "metrics": "score 0.497 · 全文 3.571 · L2 0.948"
+     },
+     {
+      "title": "3. 数据安全上，端侧向量化意味着原始文档不离开设备。对于内部…",
+      "metrics": "score 0.452 · 全文 2.298 · L2 0.962"
+     }
+    ],
+    "qembed": "4.2 ms",
+    "db": "2.7 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "14.3 ms"
+   }
+  ],
+  "bench": "模型加载 709.3 ms · 后端 wasm\n查询向量化 中位数 3.7 ms\nseekdb 混合检索 中位数 2.2 ms\n端到端 中位数 9.4 ms\n  #1 e2e 13.9 ms (embed 3.6 ms / db 3.1 ms)\n  #2 e2e 9.7 ms (embed 3.9 ms / db 2.5 ms)\n  #3 e2e 10.7 ms (embed 3.9 ms / db 3.4 ms)\n  #4 e2e 9.1 ms (embed 4.0 ms / db 2.3 ms)\n  #5 e2e 9.1 ms (embed 4.3 ms / db 1.9 ms)\n  #6 e2e 11.3 ms (embed 4.8 ms / db 2.2 ms)\n  #7 e2e 8.0 ms (embed 3.4 ms / db 1.9 ms)\n  #8 e2e 9.2 ms (embed 3.4 ms / db 2.0 ms)\n  #9 e2e 8.3 ms (embed 3.3 ms / db 2.2 ms)\n  #10 e2e 9.8 ms (embed 3.0 ms / db 3.5 ms)",
+  "batch": "批大小扫描（25 块，wasm）\n  batch= 1  371.9 ms  单项 14.87 ms  67.2 块/s\n  batch= 2  323.0 ms  单项 12.92 ms  77.4 块/s\n  batch= 4  294.5 ms  单项 11.78 ms  84.9 块/s\n  batch= 8  311.4 ms  单项 12.46 ms  80.3 块/s\n  batch=16  335.2 ms  单项 13.41 ms  74.6 块/s\n  batch=32  373.0 ms  单项 14.92 ms  67.0 块/s\n最佳：batch=4（84.9 块/s）"
+ },
+ "backend_badge": "推理后端：WASM · q8 · 4 线程",
+ "backend_why": "按 ?backend=wasm 强制指定（验证降级路径）｜探测：wasm 7.1 ms/次｜跨源隔离：已启用",
+ "model_load_ms": "709.3 ms",
+ "gpu_available": true,
+ "console": [
+  "log: [kb] backend=wasm load=709ms"
+ ]
+}

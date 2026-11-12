@@ -1,0 +1,6 @@
+node_modules/
+public/vendor/
+models-src/
+data/
+data-*/
+*.log

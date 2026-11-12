@@ -1,0 +1,108 @@
+{
+ "mode": "webgpu",
+ "url": "http://127.0.0.1:5180/?backend=webgpu",
+ "webgpu_requested": false,
+ "steps": {
+  "model_ready_ms": 1501,
+  "import": {
+   "log": "已写入「default」25 块，该库共 25 块。向量化 719.5 ms，写入 98.7 ms。\n提交后立即检索可见（seekdb 的全文与向量索引随事务生效），无需手动刷新。",
+   "embed": "719.5 ms · 25 块 · 34.7 块/s",
+   "write": "98.7 ms（服务端 90.0 ms）",
+   "docs": "知识库「default」：25 块 · 512 维 · 向量索引 已建"
+  },
+  "queries": [
+   {
+    "q": "云服务订阅收入为什么增长",
+    "top3": [
+     {
+      "title": "1. 2026 年第二季度云服务与订阅收入同比增长百分之十二，…",
+      "metrics": "score 0.708 · 全文 9.980 · L2 0.419"
+     },
+     {
+      "title": "2. 同期净利润同比下滑百分之六，财务口径的解释是汇率波动带来…",
+      "metrics": "score 0.421 · 全文 0.000 · L2 0.427"
+     },
+     {
+      "title": "3. 在浏览器内加载模型时，首次加载包含下载与初始化两步，体积…",
+      "metrics": "score 0.414 · 全文 0.000 · L2 0.451"
+     }
+    ],
+    "qembed": "93.1 ms",
+    "db": "3.4 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "99.5 ms"
+   },
+   {
+    "q": "净利润下滑的一次性因素",
+    "top3": [
+     {
+      "title": "1. 同期净利润同比下滑百分之六，财务口径的解释是汇率波动带来…",
+      "metrics": "score 0.641 · 全文 5.904 · L2 0.490"
+     },
+     {
+      "title": "2. 2026 年第二季度云服务与订阅收入同比增长百分之十二，…",
+      "metrics": "score 0.490 · 全文 1.056 · L2 0.476"
+     },
+     {
+      "title": "3. 向量检索使用 L2 距离或余弦相似度衡量两个向量的接近程…",
+      "metrics": "score 0.434 · 全文 0.217 · L2 0.453"
+     }
+    ],
+    "qembed": "71.1 ms",
+    "db": "1.9 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "75.9 ms"
+   },
+   {
+    "q": "如何保证崩溃后已提交数据不丢",
+    "top3": [
+     {
+      "title": "1. 进程被强制终止后的恢复测试会复用同一个数据目录重启，检查…",
+      "metrics": "score 0.611 · 全文 4.146 · L2 0.472"
+     },
+     {
+      "title": "2. 崩溃恢复要求已经确认提交的事务在进程被强制终止后依然存在…",
+      "metrics": "score 0.602 · 全文 3.884 · L2 0.480"
+     },
+     {
+      "title": "3. 批量写入时把多条记录放在一个事务里提交可以显著降低提交开…",
+      "metrics": "score 0.521 · 全文 1.564 · L2 0.469"
+     }
+    ],
+    "qembed": "77.3 ms",
+    "db": "3.0 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "83.6 ms"
+   },
+   {
+    "q": "端侧推理为什么要做量化",
+    "top3": [
+     {
+      "title": "1. 批量推理是端侧性能优化的第一手段。把多条文本拼成一个批次…",
+      "metrics": "score 0.578 · 全文 3.571 · L2 0.540"
+     },
+     {
+      "title": "2. 端侧推理指的是模型计算完全发生在用户设备上，典型实现是浏…",
+      "metrics": "score 0.573 · 全文 3.571 · L2 0.562"
+     },
+     {
+      "title": "3. 降级策略是端侧应用的必备能力：初始化 WebGPU 失败…",
+      "metrics": "score 0.537 · 全文 2.407 · L2 0.551"
+     }
+    ],
+    "qembed": "68.3 ms",
+    "db": "2.2 ms（单条 SQL，含向量与全文两路打分）",
+    "e2e": "73.4 ms"
+   }
+  ],
+  "bench": "模型加载 1.36 s · 后端 webgpu\n查询向量化 中位数 73.1 ms\nseekdb 混合检索 中位数 2.3 ms\n端到端 中位数 78.7 ms\n  #1 e2e 75.0 ms (embed 69.5 ms / db 2.7 ms)\n  #2 e2e 73.4 ms (embed 67.4 ms / db 3.1 ms)\n  #3 e2e 87.6 ms (embed 81.5 ms / db 3.0 ms)\n  #4 e2e 85.5 ms (embed 78.3 ms / db 1.9 ms)\n  #5 e2e 83.7 ms (embed 79.4 ms / db 1.8 ms)\n  #6 e2e 79.5 ms (embed 73.9 ms / db 2.1 ms)\n  #7 e2e 79.4 ms (embed 73.3 ms / db 2.8 ms)\n  #8 e2e 73.3 ms (embed 68.9 ms / db 2.0 ms)\n  #9 e2e 77.9 ms (embed 72.8 ms / db 2.5 ms)\n  #10 e2e 72.9 ms (embed 68.4 ms / db 1.9 ms)",
+  "batch": "批大小扫描（25 块，webgpu）\n  batch= 1  2.17 s  单项 86.72 ms  11.5 块/s\n  batch= 2  1.33 s  单项 53.04 ms  18.9 块/s\n  batch= 4  895.4 ms  单项 35.82 ms  27.9 块/s\n  batch= 8  713.5 ms  单项 28.54 ms  35.0 块/s\n  batch=16  617.5 ms  单项 24.70 ms  40.5 块/s\n  batch=32  741.8 ms  单项 29.67 ms  33.7 块/s\n最佳：batch=16（40.5 块/s）"
+ },
+ "backend_badge": "推理后端：WebGPU · q8",
+ "backend_why": "按 ?backend=webgpu 强制指定｜探测：webgpu 67.8 ms/次｜跨源隔离：已启用",
+ "model_load_ms": "1.36 s",
+ "gpu_available": true,
+ "console": [
+  "warning: The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+  "error: \u001b[0;93m2026-11-12 14:33:44.498343 [W:onnxruntime:, session_state.cc:1280 VerifyEachNodeIsAssignedToAnEp] Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.\u001b[m",
+  "error: \u001b[0;93m2026-11-12 14:33:44.499943 [W:onnxruntime:, session_state.cc:1282 VerifyEachNodeIsAssignedToAnEp] Rerunning with verbose output on a non-minimal build will show node assignments.\u001b[m",
+  "log: [kb] backend=webgpu load=1362ms"
+ ]
+}
