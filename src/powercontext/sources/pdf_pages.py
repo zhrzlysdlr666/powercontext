@@ -44,13 +44,18 @@ class PDFDocumentInput(BaseModel):
     content: bytes
 
 
-class PDFPage(BaseModel):
+class PDFPageInput(BaseModel):
     """One physical page, addressed by document revision and one-based page number."""
 
     document_id: str
     document_sha256: str
     page_number: int
     text: str
+
+
+# The published contract names the page model ``PDFPageInput``; ``PDFPage`` is the alias the
+# adapters and projections use internally.
+PDFPage = PDFPageInput
 
 
 class PDFPageSource(Source):
@@ -87,7 +92,7 @@ def _fail(message: str) -> None:
     raise ValueError(message)
 
 
-def parse_pdf_document(value: PDFDocumentInput) -> tuple[PDFPage, ...]:
+def parse_pdf_document(value: PDFDocumentInput) -> tuple[PDFPageInput, ...]:
     """Parse every physical page of one PDF, atomically.
 
     Pages are returned in physical order starting at one. A page with no extractable text is
@@ -107,12 +112,12 @@ def parse_pdf_document(value: PDFDocumentInput) -> tuple[PDFPage, ...]:
 
     reader = _open_reader(bytes(content))
     digest = sha256(bytes(content)).hexdigest()
-    pages: list[PDFPage] = []
+    pages: list[PDFPageInput] = []
     try:
         for index, page in enumerate(reader.pages, start=1):
             extracted = page.extract_text()
             pages.append(
-                PDFPage(
+                PDFPageInput(
                     document_id=value.document_id,
                     document_sha256=digest,
                     page_number=index,
@@ -151,7 +156,7 @@ def _open_reader(content: bytes):
 class PDFPageSourceAdapter:
     """Resolve pages into captured Sources and read them back unchanged."""
 
-    input_class = PDFPage
+    input_class = PDFPageInput
     name = PDF_PAGE_SOURCE_NAME
     source_class = PDFPageSource
 
@@ -168,7 +173,7 @@ class PDFPageSourceAdapter:
         )
 
     async def read(self, source: PDFPageSource, /) -> PDFPage:
-        return PDFPage(
+        return PDFPageInput(
             document_id=source.document_id,
             document_sha256=source.document_sha256,
             page_number=source.page_number,
@@ -203,7 +208,7 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 )
 
 
-async def search_pdf_pages(memory, question: str, *, limit: int = 20):
+async def search_pdf_pages(memory, question: str, limit: int = 10):
     """Return up to ``limit`` citations, one per distinct page, for one question.
 
     Retrieval runs over the page evidence already indexed in Memory and returns the exact
@@ -220,6 +225,7 @@ async def search_pdf_pages(memory, question: str, *, limit: int = 20):
 __all__ = [
     "PDFDocumentInput",
     "PDFPage",
+    "PDFPageInput",
     "PDFPageSource",
     "PDF_PAGE_SOURCE_DEFINITION",
     "PDF_PAGE_SOURCE_NAME",
