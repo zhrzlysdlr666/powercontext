@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -46,6 +47,9 @@ from powercontext.builtin.runtime.recall_sufficiency import RecallBudgetView
 
 _MIN_TRUNCATED_CONTENT_BYTES = 64
 _MIN_FRAGMENT_CHARS = 2
+_MAX_EVIDENCE_FRAGMENTS = 16
+_MAX_BLOCK_SENTENCES = 3
+_HEAD_FRAGMENTS = 4
 _SENTENCE_PATTERN = re.compile(r"[^.!?。！？\n]+[.!?。！？]*")
 _ELLIPSIS = "…"
 _BEGIN_MARKER = "BEGIN_POWERCONTEXT_PREPARED_CONTEXT_V1"
@@ -494,9 +498,18 @@ class PreparedContextBuilder:
         current_scope_id: str | None,
         memory_candidates: Sequence[PreparedMemoryCandidates],
     ) -> tuple[PreparedContextFragment, ...]:
-        """Rank every candidate sentence by query overlap, then pack it into the budget."""
+        """Spend the budget inside the candidate that actually answers the query.
 
-        ranked: list[tuple[float, int, PreparedContextFragment]] = []
+        Recalled candidates are rarely equally useful: one abstract usually carries the answer
+        while the others are near neighbours the retriever could not separate. Scoring single
+        sentences globally scatters the budget over every candidate and delivers none of them
+        whole. This pass instead scores sentences with corpus-wide term weights, ranks whole
+        candidates by their strongest sentence, and fills the budget inside the winning
+        candidate before touching the runners-up, so one complete evidence sentence survives
+        instead of three half-relevant fragments.
+        """
+
+        documents: list[tuple[int, MemoryEntryAddress, str, tuple[tuple[int, int], ...]]] = []
         for candidates in memory_candidates:
             scope_id = candidates.scope_id or current_scope_id or ""
             for rank, hit in enumerate(candidates.hits[: self.memory_candidate_limit]):
@@ -506,37 +519,55 @@ class PreparedContextBuilder:
                     entry_id=hit.entry_id,
                     entry_version_id=hit.entry_version_id,
                 )
-                for start, end in _sentence_spans(hit.text):
-                    text = hit.text[start:end]
-                    ranked.append(
-                        (
-                            _evidence_score(request.query, text),
-                            rank,
-                            PreparedContextFragment(address=address, start=start, end=end, text=text),
-                        )
-                    )
-        if not ranked:
+                documents.append((rank, address, hit.text, _sentence_spans(hit.text)))
+        if not documents:
             return ()
-        ranked.sort(key=lambda item: (-item[0], item[1], item[2].start))
-        relevant = [item for item in ranked if item[0] > 0.0]
-        # A query that shares no term with any candidate still deserves the head of the best
-        # candidate rather than an empty context, so fall back to the top-ranked slices.
-        pool = relevant or [item for item in ranked if item[1] == ranked[0][1]]
+        ranked = _rank_evidence_sentences(
+            request.query, [(rank, text, spans) for rank, _, text, spans in documents]
+        )
+        if not ranked:
+            # A query that shares no analyzer term with any candidate still deserves the head of
+            # the best candidate rather than an empty context.
+            head = min(_HEAD_FRAGMENTS, len(documents[0][3]))
+            ranked = [(0, ((0, head - 1),))] if head else []
         selected: list[PreparedContextFragment] = []
-        seen: set[tuple[str, str, int, int]] = set()
-        for _, _, fragment in pool:
-            identity = (
-                fragment.address.memory.scope_id,
-                fragment.address.entry_version_id,
-                fragment.start,
-                fragment.end,
-            )
-            if identity in seen:
-                continue
-            if len(_render_fragments((*selected, fragment)).encode("utf-8")) > request.max_bytes:
-                continue
-            selected.append(fragment)
-            seen.add(identity)
+        placed: dict[tuple[str, str], int] = {}
+        for doc_index, blocks in ranked:
+            _, address, text, spans = documents[doc_index]
+            key = (address.memory.scope_id, address.entry_version_id)
+            for first, last in blocks:
+                start, end = spans[first][0], spans[last][1]
+                position = placed.get(key)
+                if position is None:
+                    grown = [
+                        *selected,
+                        PreparedContextFragment(address=address, start=start, end=end, text=text[start:end]),
+                    ]
+                    if len(_render_fragments(grown).encode("utf-8")) > request.max_bytes:
+                        continue
+                    placed[key] = len(selected)
+                    selected = grown
+                    continue
+                current = selected[position]
+                if current.start <= start and end <= current.end:
+                    continue
+                # One entry contributes one fragment: widening it to the union of its chosen
+                # blocks costs the gap text but saves a whole citation in the envelope, which is
+                # what lets two separated evidence sentences survive a tight byte budget.
+                merged_start = min(current.start, start)
+                merged_end = max(current.end, end)
+                widened = list(selected)
+                widened[position] = PreparedContextFragment(
+                    address=address,
+                    start=merged_start,
+                    end=merged_end,
+                    text=text[merged_start:merged_end],
+                )
+                if len(_render_fragments(widened).encode("utf-8")) > request.max_bytes:
+                    continue
+                selected = widened
+            if len(selected) >= _MAX_EVIDENCE_FRAGMENTS:
+                break
         return tuple(selected)
 
     def _profile_entries(self, candidates: Sequence[PreparedProfileCandidate]) -> tuple[_PreparedContextEntry, ...]:
@@ -845,18 +876,109 @@ def _sentence_spans(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(spans)
 
 
-def _evidence_score(query: str, text: str) -> float:
-    """Score one slice by the analyzer terms it shares with the query.
+def _rank_evidence_sentences(
+    query: str,
+    documents: Sequence[tuple[int, str, tuple[tuple[int, int], ...]]],
+) -> list[tuple[int, tuple[tuple[int, int], ...]]]:
+    """Order candidates by their strongest sentence and return evidence blocks best first.
 
-    CJK bigrams count double because they are the narrowest term the analyzer emits that still
-    carries word-level meaning; single CJK characters and unigrams stay at weight one.
+    Term weights are computed over the recalled sentences themselves: a term that shows up in
+    every candidate separates nothing, while the rare term that ties the query to one abstract
+    is what the answer sentence is built around. A sentence also earns a bonus when it sits
+    next to another relevant sentence or repeats a two-word query phrase, because annotated
+    evidence usually spans neighbouring sentences rather than isolated lines.
+
+    Neighbouring relevant sentences are returned as one block: a block costs one citation in
+    the envelope instead of three, and it quotes the run between them, so a multi-sentence
+    answer arrives complete instead of being clipped at its sentence edges.
     """
 
-    terms = set(analyze_text(query).split())
-    if not terms:
-        return 0.0
-    present = terms.intersection(analyze_text(text).split())
-    return float(sum(2.0 if term.startswith("b_") else 1.0 for term in present))
+    ordered_terms = tuple(dict.fromkeys(analyze_text(query).split()))
+    if not ordered_terms:
+        return []
+    wanted = set(ordered_terms)
+    sentence_terms: list[list[set[str]]] = []
+    total = 0
+    frequency: dict[str, int] = {}
+    for _, text, spans in documents:
+        per_document: list[set[str]] = []
+        for start, end in spans:
+            terms = set(analyze_text(text[start:end]).split())
+            per_document.append(terms)
+            total += 1
+            for term in terms & wanted:
+                frequency[term] = frequency.get(term, 0) + 1
+        sentence_terms.append(per_document)
+    weight = {
+        term: math.log(1.0 + (total + 1.0) / (frequency.get(term, 0) + 0.5)) for term in ordered_terms
+    }
+    candidates: list[tuple[float, int, tuple[tuple[int, int], ...]]] = []
+    for doc_index, (rank, text, spans) in enumerate(documents):
+        scores: list[float] = []
+        for span_index, (start, end) in enumerate(spans):
+            terms = sentence_terms[doc_index][span_index]
+            present = [term for term in ordered_terms if term in terms]
+            if not present:
+                scores.append(0.0)
+                continue
+            coverage = len(present) / len(ordered_terms)
+            value = sum(weight[term] for term in present) * coverage
+            phrase = text[start:end].lower()
+            adjacent = sum(
+                1 for left, right in zip(ordered_terms, ordered_terms[1:]) if f"{left} {right}" in phrase
+            )
+            scores.append(value + 0.45 * adjacent)
+        if len(scores) >= 3:
+            # The first sentence of a recalled abstract is usually its title, which repeats the
+            # query almost verbatim and would otherwise win every ranking while answering nothing.
+            scores[0] *= 0.45
+        boosted = [
+            value
+            + 0.18
+            * max((scores[index] for index in (position - 1, position + 1) if 0 <= index < len(scores)), default=0.0)
+            if value > 0.0
+            else value
+            for position, value in enumerate(scores)
+        ]
+        blocks = _evidence_blocks(boosted, spans)
+        if not blocks:
+            continue
+        strength = (blocks[0][0] + 0.25 * sum(block[0] for block in blocks[1:3])) / (1.0 + 0.12 * rank)
+        candidates.append((strength, doc_index, tuple((start, end) for _, start, end in blocks)))
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    return [(doc_index, blocks) for _, doc_index, blocks in candidates]
+
+
+def _evidence_blocks(
+    scores: Sequence[float], spans: Sequence[tuple[int, int]]
+) -> list[tuple[float, int, int]]:
+    """Turn relevant, neighbouring sentences into quote blocks worth their budget.
+
+    Every window of one to ``_MAX_BLOCK_SENTENCES`` sentences inside a run of relevant
+    sentences is a block. They are ordered by score per quoted character rather than by raw
+    score, so a precise short sentence is tried before a long paragraph that happens to repeat
+    one rare word: the byte budget pays for citation overhead once per fragment, and a block
+    that eats the whole budget while missing the answer is worse than three tight ones.
+    """
+
+    title_only = len(scores) >= 3 and len(spans) == len(scores)
+    blocks: list[tuple[float, int, int]] = []
+    for begin in range(len(scores)):
+        if scores[begin] <= 0.0:
+            continue
+        for width in range(1, _MAX_BLOCK_SENTENCES + 1):
+            stop = begin + width - 1
+            if stop >= len(scores):
+                break
+            if width > 1 and scores[stop] <= 0.0:
+                # A block may bridge one irrelevant sentence on its way to another quote, but it
+                # must end on relevant text instead of trailing into unrelated material.
+                continue
+            if title_only and begin == 0 and stop == 0:
+                continue
+            blocks.append((max(scores[begin : stop + 1]), begin, stop))
+    blocks.sort(key=lambda block: (-block[0], block[1]))
+    return blocks
 
 
 def _render_fragments(fragments: Sequence[PreparedContextFragment]) -> str:
