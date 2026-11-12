@@ -1,0 +1,335 @@
+{
+  "generatedAt": "2026-11-12T07:07:52.442Z",
+  "corpus": {
+    "documents": 10,
+    "chunks": 10
+  },
+  "queries": 22,
+  "model": {
+    "id": "Xenova/bge-small-zh-v1.5",
+    "dimension": 512,
+    "pooling": "cls",
+    "normalized": true
+  },
+  "size": {
+    "int8Bytes": 24010842,
+    "fp32Bytes": 94851877,
+    "ratio": 3.95
+  },
+  "results": [
+    {
+      "label": "int8",
+      "chunks": 10,
+      "docs": 10,
+      "docEmbedMs": 100,
+      "docPerSecond": 100.2,
+      "queryMs": 4.7,
+      "vector": {
+        "Recall@1": 0.8181818181818182,
+        "Recall@5": 1,
+        "MRR@10": 0.8901515151515151
+      },
+      "keyword": {
+        "Recall@1": 0.7727272727272727,
+        "Recall@5": 1,
+        "MRR@10": 0.8727272727272727
+      },
+      "hybrid": {
+        "Recall@1": 0.9545454545454546,
+        "Recall@5": 1,
+        "MRR@10": 0.9659090909090909
+      },
+      "tops": [
+        {
+          "q": "seekdb 是什么数据库",
+          "expected": "seekdb-overview",
+          "hybridTop": "seekdb-overview",
+          "ok": true
+        },
+        {
+          "q": "RRF 融合为什么要看排名而不是分数",
+          "expected": "hybrid-rrf",
+          "hybridTop": "hybrid-rrf",
+          "ok": true
+        },
+        {
+          "q": "混合检索为什么不能让客户端自己拼两路结果",
+          "expected": "hybrid-rrf",
+          "hybridTop": "hybrid-rrf",
+          "ok": true
+        },
+        {
+          "q": "在浏览器本地跑模型有什么好处",
+          "expected": "on-device-inference",
+          "hybridTop": "on-device-inference",
+          "ok": true
+        },
+        {
+          "q": "INT8 量化能让模型小多少",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "量化前后检索质量怎么对比",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "WebGPU 不可用时怎么办",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "显卡加速和 CPU 加速差多少",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "长文档应该怎么切块",
+          "expected": "chunking",
+          "hybridTop": "chunking",
+          "ok": true
+        },
+        {
+          "q": "导入后马上提问为什么查不到",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "重复导入同一篇文档会怎样",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "营业收入和净利润的口径区别",
+          "expected": "financial-report",
+          "hybridTop": "financial-report",
+          "ok": true
+        },
+        {
+          "q": "怎么测批大小对吞吐的影响",
+          "expected": "benchmark",
+          "hybridTop": "benchmark",
+          "ok": true
+        },
+        {
+          "q": "清理浏览器缓存会丢什么",
+          "expected": "browser-storage",
+          "hybridTop": "browser-storage",
+          "ok": true
+        },
+        {
+          "q": "模型压到八位会不会把排序带偏",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "刚写好的笔记立刻搜不到是怎么回事",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "怎么确认计算真的发生在我的电脑上",
+          "expected": "on-device-inference",
+          "hybridTop": "on-device-inference",
+          "ok": true
+        },
+        {
+          "q": "我的老显卡跑不动模型有别的办法吗",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "一段话被从中间切断导致答案找不到",
+          "expected": "chunking",
+          "hybridTop": "chunking",
+          "ok": true
+        },
+        {
+          "q": "两家公司利润差很多怎么比较才公平",
+          "expected": "financial-report",
+          "hybridTop": "financial-report",
+          "ok": true
+        },
+        {
+          "q": "一次算一条和一次算一批哪个快",
+          "expected": "benchmark",
+          "hybridTop": "benchmark",
+          "ok": true
+        },
+        {
+          "q": "断网之后这个应用还能用吗",
+          "expected": "browser-storage",
+          "hybridTop": "on-device-inference",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "label": "fp32",
+      "chunks": 10,
+      "docs": 10,
+      "docEmbedMs": 252,
+      "docPerSecond": 39.6,
+      "queryMs": 7.8,
+      "vector": {
+        "Recall@1": 0.8636363636363636,
+        "Recall@5": 1,
+        "MRR@10": 0.9204545454545454
+      },
+      "keyword": {
+        "Recall@1": 0.7727272727272727,
+        "Recall@5": 1,
+        "MRR@10": 0.8727272727272727
+      },
+      "hybrid": {
+        "Recall@1": 0.9545454545454546,
+        "Recall@5": 1,
+        "MRR@10": 0.9659090909090909
+      },
+      "tops": [
+        {
+          "q": "seekdb 是什么数据库",
+          "expected": "seekdb-overview",
+          "hybridTop": "seekdb-overview",
+          "ok": true
+        },
+        {
+          "q": "RRF 融合为什么要看排名而不是分数",
+          "expected": "hybrid-rrf",
+          "hybridTop": "hybrid-rrf",
+          "ok": true
+        },
+        {
+          "q": "混合检索为什么不能让客户端自己拼两路结果",
+          "expected": "hybrid-rrf",
+          "hybridTop": "hybrid-rrf",
+          "ok": true
+        },
+        {
+          "q": "在浏览器本地跑模型有什么好处",
+          "expected": "on-device-inference",
+          "hybridTop": "on-device-inference",
+          "ok": true
+        },
+        {
+          "q": "INT8 量化能让模型小多少",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "量化前后检索质量怎么对比",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "WebGPU 不可用时怎么办",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "显卡加速和 CPU 加速差多少",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "长文档应该怎么切块",
+          "expected": "chunking",
+          "hybridTop": "chunking",
+          "ok": true
+        },
+        {
+          "q": "导入后马上提问为什么查不到",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "重复导入同一篇文档会怎样",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "营业收入和净利润的口径区别",
+          "expected": "financial-report",
+          "hybridTop": "financial-report",
+          "ok": true
+        },
+        {
+          "q": "怎么测批大小对吞吐的影响",
+          "expected": "benchmark",
+          "hybridTop": "benchmark",
+          "ok": true
+        },
+        {
+          "q": "清理浏览器缓存会丢什么",
+          "expected": "browser-storage",
+          "hybridTop": "browser-storage",
+          "ok": true
+        },
+        {
+          "q": "模型压到八位会不会把排序带偏",
+          "expected": "quantization",
+          "hybridTop": "quantization",
+          "ok": true
+        },
+        {
+          "q": "刚写好的笔记立刻搜不到是怎么回事",
+          "expected": "incremental",
+          "hybridTop": "incremental",
+          "ok": true
+        },
+        {
+          "q": "怎么确认计算真的发生在我的电脑上",
+          "expected": "on-device-inference",
+          "hybridTop": "on-device-inference",
+          "ok": true
+        },
+        {
+          "q": "我的老显卡跑不动模型有别的办法吗",
+          "expected": "webgpu",
+          "hybridTop": "webgpu",
+          "ok": true
+        },
+        {
+          "q": "一段话被从中间切断导致答案找不到",
+          "expected": "chunking",
+          "hybridTop": "chunking",
+          "ok": true
+        },
+        {
+          "q": "两家公司利润差很多怎么比较才公平",
+          "expected": "financial-report",
+          "hybridTop": "financial-report",
+          "ok": true
+        },
+        {
+          "q": "一次算一条和一次算一批哪个快",
+          "expected": "benchmark",
+          "hybridTop": "benchmark",
+          "ok": true
+        },
+        {
+          "q": "断网之后这个应用还能用吗",
+          "expected": "browser-storage",
+          "hybridTop": "on-device-inference",
+          "ok": false
+        }
+      ]
+    }
+  ]
+}

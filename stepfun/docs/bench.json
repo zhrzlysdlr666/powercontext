@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-11-12T07:08:18.612Z",
+  "corpus": {
+    "documents": 10,
+    "chunks": 10
+  },
+  "runtime": {
+    "platform": "win32",
+    "node": "v22.22.2",
+    "backend": "wasm (node)"
+  },
+  "batching": [
+    {
+      "batchSize": 1,
+      "chunks": 10,
+      "totalMs": 128,
+      "perChunkMs": 12.8,
+      "chunksPerSecond": 77.8
+    },
+    {
+      "batchSize": 4,
+      "chunks": 10,
+      "totalMs": 163,
+      "perChunkMs": 16.3,
+      "chunksPerSecond": 61.4
+    },
+    {
+      "batchSize": 8,
+      "chunks": 10,
+      "totalMs": 106,
+      "perChunkMs": 10.6,
+      "chunksPerSecond": 94.5
+    },
+    {
+      "batchSize": 16,
+      "chunks": 10,
+      "totalMs": 97,
+      "perChunkMs": 9.7,
+      "chunksPerSecond": 103.2
+    }
+  ],
+  "write": {
+    "chunks": 10,
+    "upsertMs": 192,
+    "refreshIndexMs": 4233
+  },
+  "searchMs": {
+    "vector": 3.37,
+    "keyword": 3.26,
+    "hybrid": 13.32
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "seekdb-stepfun-mini-kb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "On-device embedding in the browser + hybrid retrieval in seekdb",
+  "scripts": {
+    "setup": "node tools/setup.mjs",
+    "start": "node server/index.mjs",
+    "bundle": "node tools/bundle-runtime.mjs",
+    "eval": "node tools/eval-quality.mjs",
+    "bench": "node tools/bench.mjs",
+    "tune": "node tools/tune-rrf.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.5",
+    "@oceanbase/seekdb-node": "^1.4.0",
+    "seekdb": "1.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>端侧知识库 · 浏览器向量化 + seekdb 混合检索</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <div>
+          <h1>端侧知识库</h1>
+          <p>浏览器本地向量化 · seekdb 库内混合检索</p>
+        </div>
+      </div>
+      <div class="badges">
+        <span class="badge" id="badgeDevice" title="推理后端">后端：检测中…</span>
+        <span class="badge badge-muted" id="badgeDtype">INT8</span>
+        <span class="badge badge-muted" id="badgeDb">seekdb：连接中…</span>
+        <select id="backend" title="推理后端">
+          <option value="auto">自动选择后端</option>
+          <option value="webgpu">强制 WebGPU（FP16）</option>
+          <option value="wasm">强制 WASM（INT8）</option>
+        </select>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>① 导入语料</h2>
+        <div class="drop" id="drop">
+          <p><strong>拖入 .txt / .md 文件</strong>，或点击选择</p>
+          <input type="file" id="file" multiple accept=".txt,.md,.markdown,text/plain" hidden />
+        </div>
+        <textarea id="paste" rows="4" placeholder="也可以直接粘贴文本，第一行作为标题"></textarea>
+        <div class="row">
+          <button id="btnSample" class="ghost">载入示例语料</button>
+          <button id="btnImport" class="primary">向量化并写入 seekdb</button>
+        </div>
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><i id="barFill"></i></div>
+          <span id="progressText">准备中…</span>
+        </div>
+
+        <h2>② 知识库</h2>
+        <div class="row">
+          <input id="collection" class="grow" value="kb_chunks" spellcheck="false" />
+          <button id="btnSwitch" class="ghost">切换/新建</button>
+        </div>
+        <div class="row">
+          <button id="btnReset" class="ghost danger">清空当前库</button>
+          <button id="btnRefresh" class="ghost">刷新索引</button>
+          <label class="check"><input type="checkbox" id="refresh" checked /> 写入后刷新索引</label>
+        </div>
+        <dl class="stats">
+          <div><dt>文档</dt><dd id="statDocs">0</dd></div>
+          <div><dt>分块</dt><dd id="statChunks">0</dd></div>
+          <div><dt>向量维度</dt><dd id="statDim">-</dd></div>
+        </dl>
+        <ul class="docs" id="docList"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>③ 检索</h2>
+        <div class="searchbar">
+          <input id="query" placeholder="输入问题，例如：INT8 量化对检索质量有什么影响？" />
+          <button id="btnSearch" class="primary">检索</button>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input type="radio" name="mode" value="hybrid" checked /> 混合（库内 RRF）</label>
+          <label class="check"><input type="radio" name="mode" value="vector" /> 纯向量</label>
+          <label class="check"><input type="radio" name="mode" value="keyword" /> 纯全文</label>
+          <label class="check">TopK <input type="number" id="topK" value="6" min="1" max="30" /></label>
+        </div>
+        <div class="timing" id="timing"></div>
+        <ol class="hits" id="hits"></ol>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="log">就绪。所有向量都在本机浏览器内计算，服务端只负责 seekdb 存取与检索。</span>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
