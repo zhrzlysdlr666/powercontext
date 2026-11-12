@@ -50,6 +50,7 @@ import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterable, Sequence
+from urllib.parse import unquote
 
 from powercontext.builtin.artifacts.memory.models import MemoryCitation
 
@@ -61,6 +62,9 @@ BM25_B = 0.75
 
 _WORD = re.compile(r"[a-z]+|\d+")
 _PAGE_SUFFIX = re.compile(r":(\d+)$")
+# Words that identify a filing keep their digits: "3M" is not the number three followed by the
+# letter m, and "10-K" and "FY2022" are named by the shapes a page tokenizer would split apart.
+_DOCUMENT_WORD = re.compile(r"[a-z0-9]+")
 _ITEM_HEADING = re.compile(r"^Item\s+(\d+[A-C]?)\.", re.IGNORECASE)
 _COMPACT = re.compile(r"\s+")
 # A page names itself in its first few non-empty lines; text further down only refers to it.
@@ -302,6 +306,11 @@ _NEIGHBOUR_DECAY = ((1, 0.55), (2, 0.3))
 _NEIGHBOUR_SPREAD = 0.32
 # Flat credit for the statement the question names.
 _STATEMENT_BONUS = 0.24
+# A database can hold several documents, and the window is then shared between them in
+# proportion to how much of the question's own vocabulary each one carries. The floor keeps a
+# group that a question phrases in unfamiliar words from disappearing entirely.
+_DOC_WEIGHT_POWER = 1.0
+_DOC_WEIGHT_FLOOR = 0.15
 # The business description occupies the opening pages of a filing; a quarter of a million
 # characters of notes follow it.
 _FRONT_PAGES = 25
@@ -314,6 +323,7 @@ class _StoredPage:
     page_number: int
     text: str
     citation: MemoryCitation
+    document_id: str = ""
 
 
 def _title_lines(text: str) -> list[str]:
@@ -352,24 +362,42 @@ def _page_number(source_id: str, fallback: int) -> int:
     return int(match.group(1)) if match else fallback
 
 
-def _drop_running_head(pages: Sequence["_StoredPage"]) -> list["_StoredPage"]:
-    """Remove the one line every page repeats, such as the document name or a running head.
+def _document_of(source_id: str) -> str:
+    """The document a page belongs to, read back out of ``pdf:<document>:<revision>:<page>``.
 
-    The runtime stores each page as ``DOCUMENT_ID\\nPAGE_TEXT``, so the document identifier is
-    indexed along with the body. It already appears on every page, which makes it worthless
-    for ranking and makes the first line of every page look like a title.
+    A long identifier is stored as a digest, which is just as stable for grouping: two pages
+    share a document when they share this value.
     """
 
-    if len(pages) < 2:
-        return list(pages)
+    parts = source_id.split(":")
+    if not parts or parts[0] != "pdf":
+        return ""
+    if len(parts) == 5 and parts[1] == "h":
+        return f"h:{parts[2]}"
+    if len(parts) == 4:
+        return unquote(parts[1])
+    return ""
+
+
+def _drop_running_head(pages: Sequence["_StoredPage"]) -> list["_StoredPage"]:
+    """Remove the document identifier line the runtime prepends to every page.
+
+    The runtime stores each page as ``DOCUMENT_ID\\nPAGE_TEXT``, so the identifier is indexed
+    along with the body. It already appears on every page, which makes it worthless for
+    ranking and makes the first line of every page look like a title. A database can hold
+    several documents, so the line is matched against the page's own identifier rather than
+    against whatever every page happens to share.
+    """
+
     heads = [page.text.split("\n", 1)[0].strip() for page in pages]
-    head = heads[0]
-    if not head or any(other != head for other in heads):
-        return list(pages)
+    shared = heads[0] if heads and all(other == heads[0] for other in heads) else ""
     trimmed: list[_StoredPage] = []
-    for page in pages:
-        _, _, body = page.text.partition("\n")
-        trimmed.append(_StoredPage(page_number=page.page_number, text=body, citation=page.citation))
+    for page, head in zip(pages, heads):
+        known = page.document_id or shared
+        if known and head == known:
+            _, _, body = page.text.partition("\n")
+            page = _StoredPage(page.page_number, body, page.citation, page.document_id)
+        trimmed.append(page)
     return trimmed
 
 
@@ -402,6 +430,28 @@ class _Corpus:
         for position, page in enumerate(self.pages):
             for title in self._titles(page.text):
                 self.headings[title].append(position)
+        # A database holds a whole document set, not one file, so every page keeps the document
+        # it came from. Pages of one group numbering from one would otherwise look adjacent.
+        self.documents: dict[str, tuple[int, ...]] = {}
+        grouped: dict[str, list[int]] = defaultdict(list)
+        for position, page in enumerate(self.pages):
+            grouped[page.document_id or ""].append(position)
+        self.documents = {name: tuple(positions) for name, positions in grouped.items()}
+        # Term counts per document, so a question can be matched to the file that carries its
+        # own vocabulary instead of to whichever file repeats generic accounting words most.
+        self._document_terms: dict[str, Counter[str]] = defaultdict(Counter)
+        for position, page in enumerate(self.pages):
+            for term in _DOCUMENT_WORD.findall(page.text.lower()):
+                self._document_terms[page.document_id][term] += 1
+        # Each document is indexed on its own, so its pages are ranked exactly as they would be
+        # in a database that held only that file. Ranking the whole database at once would
+        # re-weight every term by the other four filings' vocabulary.
+        self.groups: dict[str, "_Corpus"] = {}
+        if len(self.documents) > 1:
+            self.groups = {
+                name: _Corpus([self.pages[position] for position in positions])
+                for name, positions in self.documents.items()
+            }
 
     @staticmethod
     def _titles(text: str) -> list[str]:
@@ -619,6 +669,8 @@ class _Corpus:
         return kept or list(terms)
 
     def rank(self, question: str, limit: int) -> list[_StoredPage]:
+        if self.groups:
+            return self._across_documents(question, limit)
         concept_terms = self._discriminating(content_terms(question))
         expanded = _expand(concept_terms)
         views: dict[str, list[int]] = {
@@ -685,6 +737,61 @@ class _Corpus:
         picked = [position for position, _score in ordered[:limit]]
         return [self.pages[position] for position in picked]
 
+    def _across_documents(self, question: str, limit: int) -> list["_StoredPage"]:
+        """Fill the window from every document in the database, not only the best match.
+
+        A database holds a whole document set, and a question never says which file answers it.
+        Ranking all pages together hands the window to the one filing whose tables happen to
+        repeat the question's words; the other groups then retrieve nothing they own and score
+        zero. Each document is therefore ranked on its own index — the same ordering a database
+        holding only that file would produce — and the documents share the window in proportion
+        to how much of the question's own vocabulary they carry.
+        """
+
+        weight = self._document_weights(question)
+        highest = max(weight.values(), default=0.0)
+        merged: list[tuple[float, str, int, _StoredPage]] = []
+        for name, group in self.groups.items():
+            share = 1.0
+            if highest > 0.0:
+                share = max((weight.get(name, 0.0) / highest) ** _DOC_WEIGHT_POWER, _DOC_WEIGHT_FLOOR)
+            for rank, page in enumerate(group.rank(question, limit)):
+                merged.append((share / (_FUSION_K + rank + 1), name, page.page_number, page))
+        merged.sort(key=lambda item: (-item[0], item[1], item[2]))
+        return [page for _score, _name, _number, page in merged[:limit]]
+
+    def _document_weights(self, question: str) -> dict[str, float]:
+        """How much of the window each document deserves for this question.
+
+        The words that identify a filing are the ones the other files do not use: the company
+        name, its products, its segments. A term every filing repeats carries no information
+        about which one to read, so it is weighted by how rare it is across the database and
+        ignored when every document has it. When a question names nothing distinctive, every
+        document weighs the same and the window is shared evenly.
+        """
+
+        count = len(self.documents)
+        if count < 2:
+            return {}
+        terms = [
+            term for term in _DOCUMENT_WORD.findall(question.lower()) if term not in _STOPWORDS
+        ]
+        weights: dict[str, float] = {}
+        for name in self.documents:
+            total = 0.0
+            for term in terms:
+                document_frequency = sum(
+                    1 for other in self._document_terms.values() if other.get(term)
+                )
+                if document_frequency <= 0:
+                    continue
+                rarity = math.log(count / document_frequency)
+                if rarity <= 0.0:
+                    continue
+                total += rarity * math.log1p(self._document_terms[name].get(term, 0))
+            weights[name] = total
+        return weights
+
 
 _CACHE: dict[tuple[str, int, int], _Corpus] = {}
 _CACHE_LIMIT = 8
@@ -714,6 +821,7 @@ async def page_corpus(memory) -> _Corpus:
                 page_number=_page_number(source_id, fallback),
                 text=record.entry.text,
                 citation=record.citation,
+                document_id=_document_of(source_id),
             )
         )
     pages.sort(key=lambda page: page.page_number)
