@@ -86,19 +86,123 @@
       <input id="q" placeholder="输入关键词，例如：中文分词 / 倒排索引 / 切片策略 / 并行度" autocomplete="off" />
       <button class="go" id="go">检索</button>
     </div>
-    <div class="chips" id="chips"></div>
-    <div class="hint" id="hint">预置查询展示 seekdb 的真实命中与耗时；自由关键词在同一批切片上按 BM25 打分（页面内即时计算）。索引内嵌，无后端也能检索。</div>
+    <div class="chips" id="chips"><!--B:chips--><span class="chip">中文分词器怎么选</span><span class="chip">倒排索引 词项 查找</span><span class="chip">BM25 相关度打分</span><span class="chip">RAG 召回质量</span><span class="chip">切片策略 语义边界</span><span class="chip">混合检索 RRF</span><span class="chip">seekdb 内存预算</span><span class="chip">全文索引 增量更新</span>
+    <!--E:chips--></div>
+    <div class="hint" id="hint">「中文分词器怎么选」是预置查询：命中与耗时均来自 seekdb 实测。在搜索框输入任意关键词，页面按 BM25 在 28 个切片上重新排序。</div>
   </div>
 
-  <div class="meta" id="meta"></div>
-  <div class="results" id="results"></div>
+  <div class="meta" id="meta"><!--B:meta--><span>切片 <b>28</b></span>
+    <span>文档 <b>5</b></span>
+    <span>命中 <b>4</b></span>
+    <span>来源 <b>seekdb 实时结果</b></span>
+    <span>耗时 <b>0.76 ms</b></span>
+    <!--E:meta--></div>
+  <div class="results" id="results"><!--B:results-->
+    <div class="card">
+      <span class="score">score 2.317</span>
+      <h3>建表与全文索引</h3>
+      <div class="src"><span class="tag">seekdb</span>seekdb 快速上手</div>
+      <div class="snip">建全文索引的语法与 MySQL 接近：`FULLTEXT INDEX ft_body (body) WITH PARSER ik`。中文内容务必指定 ik 分词器，默认分词器按空格切，对中文几乎无效。 索引列建议是长文本正文；标题类短字段不必单独建全文索引，把它拼进正文既省一个索引又提高命中率。</div>
+    </div>
+    <div class="card">
+      <span class="score">score 1.793</span>
+      <h3>分词器决定召回质量</h3>
+      <div class="src"><span class="tag">全文检索</span>全文索引与中文分词</div>
+      <div class="snip">英文按空格切词即可，中文必须借助分词器。按粒度可分三类：单字切分（召回高、噪声大）、词典最大匹配（可控、需要词典）、统计模型分词（效果好、启动慢）。IK 分词器属于词典 + 歧义消解的组合方案，支持 ik_smart（粗粒度）与 ik_max_word（细粒度）两种模式。 建索引与查询必须使用同一种分词模式，否则同一个句子会切成不同的词序列，导致「明明有这个词却搜不到」。这是全文检索最常见的配置错误。</div>
+    </div>
+    <div class="card">
+      <span class="score">score 0.709</span>
+      <h3>常见坑</h3>
+      <div class="src"><span class="tag">seekdb</span>seekdb 快速上手</div>
+      <div class="snip">- 分词模式不一致：建索引用 ik_max_word、查询用 ik_smart，会出现搜不到。 - 表字符集不是 utf8mb4：中文被截断成问号，索引里全是垃圾词。 - 切块过长：一个切片超过几千字，相关度分数被长度归一化稀释，排序失真。</div>
+    </div>
+    <div class="card">
+      <span class="score">score 0.479</span>
+      <h3>停止词与词干化</h3>
+      <div class="src"><span class="tag">全文检索</span>全文索引与中文分词</div>
+      <div class="snip">停止词（的、了、是、a、the）对排序无贡献，却占倒排表体积。去掉能显著压缩索引，但会破坏短语查询（&quot;to be or not to be&quot;）。折中方案是保留停止词的位置信息但不建倒排项。 词干化把 running/runs/ran 归并到 run，提高召回；中文没有词干概念，对应手段是同义词表与繁简归一。</div>
+    </div>
+    <!--E:results--></div>
 
   <section class="panel">
     <h2>检索基准（seekdb 实测）</h2>
     <p class="lead">下表为导出数据时对 12 组预置查询的真实检索结果，含命中数与端到端耗时。</p>
     <table>
       <thead><tr><th>查询</th><th style="width:90px">命中</th><th style="width:110px">耗时</th><th style="width:140px"></th></tr></thead>
-      <tbody id="bench"></tbody>
+      <tbody id="bench"><!--B:bench-->
+    <tr>
+      <td>中文分词器怎么选</td>
+      <td class="num">4</td>
+      <td class="num">0.76 ms</td>
+      <td><div class="bar"><i style="width:48.90745501285347%"></i></div></td>
+    </tr>
+    <tr>
+      <td>倒排索引 词项 查找</td>
+      <td class="num">6</td>
+      <td class="num">0.99 ms</td>
+      <td><div class="bar"><i style="width:63.624678663239074%"></i></div></td>
+    </tr>
+    <tr>
+      <td>BM25 相关度打分</td>
+      <td class="num">6</td>
+      <td class="num">0.80 ms</td>
+      <td><div class="bar"><i style="width:51.285347043701805%"></i></div></td>
+    </tr>
+    <tr>
+      <td>RAG 召回质量</td>
+      <td class="num">6</td>
+      <td class="num">0.74 ms</td>
+      <td><div class="bar"><i style="width:47.49357326478149%"></i></div></td>
+    </tr>
+    <tr>
+      <td>切片策略 语义边界</td>
+      <td class="num">4</td>
+      <td class="num">0.67 ms</td>
+      <td><div class="bar"><i style="width:42.80205655526992%"></i></div></td>
+    </tr>
+    <tr>
+      <td>混合检索 RRF</td>
+      <td class="num">6</td>
+      <td class="num">0.71 ms</td>
+      <td><div class="bar"><i style="width:45.75835475578406%"></i></div></td>
+    </tr>
+    <tr>
+      <td>seekdb 内存预算</td>
+      <td class="num">6</td>
+      <td class="num">0.72 ms</td>
+      <td><div class="bar"><i style="width:46.46529562982005%"></i></div></td>
+    </tr>
+    <tr>
+      <td>全文索引 增量更新</td>
+      <td class="num">2</td>
+      <td class="num">0.63 ms</td>
+      <td><div class="bar"><i style="width:40.167095115681235%"></i></div></td>
+    </tr>
+    <tr>
+      <td>执行计划 回表</td>
+      <td class="num">6</td>
+      <td class="num">0.71 ms</td>
+      <td><div class="bar"><i style="width:45.822622107969146%"></i></div></td>
+    </tr>
+    <tr>
+      <td>并行度 瓶颈 CPU</td>
+      <td class="num">6</td>
+      <td class="num">1.56 ms</td>
+      <td><div class="bar"><i style="width:100%"></i></div></td>
+    </tr>
+    <tr>
+      <td>基准测试 噪声 中位数</td>
+      <td class="num">2</td>
+      <td class="num">0.96 ms</td>
+      <td><div class="bar"><i style="width:62.01799485861182%"></i></div></td>
+    </tr>
+    <tr>
+      <td>评分 权重 边际收益</td>
+      <td class="num">3</td>
+      <td class="num">0.82 ms</td>
+      <td><div class="bar"><i style="width:52.76349614395887%"></i></div></td>
+    </tr>
+    <!--E:bench--></tbody>
     </table>
   </section>
 
@@ -107,7 +211,13 @@
     <p class="lead">按二级标题切片，标题拼入正文以提升命中；<code>(doc, heading)</code> 唯一键保证导入幂等。</p>
     <table>
       <thead><tr><th>文档</th><th style="width:110px">主题</th><th style="width:90px">切片</th></tr></thead>
-      <tbody id="docs"></tbody>
+      <tbody id="docs"><!--B:docs-->
+    <tr><td>检索增强生成（RAG）实践笔记</td><td>RAG</td><td class="num">6</td></tr>
+    <tr><td>seekdb 快速上手</td><td>seekdb</td><td class="num">5</td></tr>
+    <tr><td>全文索引与中文分词</td><td>全文检索</td><td class="num">5</td></tr>
+    <tr><td>技术竞赛的准备工作流</td><td>备赛方法</td><td class="num">6</td></tr>
+    <tr><td>数据库性能调优方法</td><td>性能调优</td><td class="num">6</td></tr>
+    <!--E:docs--></tbody>
     </table>
   </section>
 
