@@ -41,6 +41,7 @@ python main.py          # 不需要 node、不需要 pip install、不依赖外�
 ```
 
 有 node 的环境等价命令：`node main.mjs`（`npm run selfcheck`），检查项与输出一致。
+`python app.py`、`python run.py`、`./run.sh` 都是同一个入口的别名。
 
 **B. 服务模式（给浏览器，常驻）**
 
@@ -114,6 +115,9 @@ node src/search.mjs --export        # 重新导出 web/data/index.json
 ## 6. 目录
 
 ```
+main.py             单入口：缺省自检 / --serve 起服务（纯标准库，不需要 node）
+app.py, run.py, run.sh   main.py 的别名入口
+main.mjs            node 版单入口：缺省自检 / --serve 起服务
 content/            学习资料（Markdown，按二级标题切片）
 src/db.mjs          seekdb 生命周期 + 建表（含 ik 全文索引）
 src/ingest.mjs      切片 + 幂等导入

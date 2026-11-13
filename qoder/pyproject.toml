@@ -1,0 +1,9 @@
+[project]
+name = "studylens"
+version = "0.1.0"
+description = "StudyLens — seekdb 驱动的学习资料检索工作台（OceanBase 2026 大赛 Qoder 赛题）"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+studylens = "main:serve"

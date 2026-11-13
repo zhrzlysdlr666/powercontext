@@ -1,0 +1,2 @@
+# StudyLens 不需要任何第三方 Python 包：自检与 HTTP 服务只用标准库。
+# （可选的重建索引走 node：见 README 第 5 节，需要 @oceanbase/seekdb-node。）
