@@ -52,4 +52,12 @@ node src/search.mjs --export     # 重新导出 web/data/index.json
 node src/embed.mjs               # 把导出的数据内联回网页
 ```
 
+### 一键自检
+
+```bash
+python verify.py     # 8 项：数据内联、首屏预渲染、线上可达、可见结果
+```
+
+开发过程（Qoder CLI 各阶段的真实命令与产物）见 [`qoder/docs/qoder-development.md`](qoder/docs/qoder-development.md)。
+
 细节见 [`qoder/README.md`](qoder/README.md)。
