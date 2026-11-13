@@ -19,15 +19,27 @@
 ### 30 秒验证
 
 ```bash
-git clone <this repo> && cd <repo>
-npm start                      # 零依赖静态服务器，默认 3000 端口
+git clone <this repo> && cd <repo>/qoder
+npm start                      # 零依赖静态服务 + 检索接口，默认 3000 端口；不需要 npm install
 # 打开 http://localhost:3000
 ```
 
-页面打开后无需任何后端：
+也可以一条命令起容器：`cd qoder && docker compose up --build`。
+
+跑通主要功能的判据（不需要浏览器）：
+
+```bash
+curl -s localhost:3000/api/health
+# {"ok":true,"engine":"seekdb (FULLTEXT + IK parser, BM25)","chunks":28,"docs":5,"presets":12,"entry":"web/index.html"}
+curl -s "localhost:3000/api/search?q=%E5%80%92%E6%8E%92%E7%B4%A2%E5%BC%95"
+# {"q":"倒排索引","engine":"bm25","total":8,"latencyMs":0.4,"hits":[{"doc":"全文索引与中文分词","heading":"倒排索引的基本结构","score":10.345,...
+npm run smoke                  # 上面两步的一键版，最后打印 SMOKE OK
+```
+
+页面打开后：
 
 1. 默认展示预置查询「中文分词器怎么选」——**命中数与耗时来自 seekdb 实测**（4 条命中、0.761 ms）；
-2. 在搜索框输入任意关键词（例如「倒排索引」）——页面在 28 个切片上按 BM25 打分并排序，结果带分数与耗时；
+2. 在搜索框输入任意关键词（例如「倒排索引」）——输入即搜，页面在 28 个切片上按 BM25 打分并排序，结果带分数与耗时；
 3. 下方表格是导出数据时 12 组预置查询的 seekdb 实测基准。
 
 > 索引数据内嵌在 `qoder/web/index.html` 里，所以直接双击该文件（`file://`）也能检索，不依赖本地服务器。
@@ -39,7 +51,7 @@ npm start                      # 零依赖静态服务器，默认 3000 端口
 | 用 Qoder 开发 | 项目由 Qoder CLI 产出并迭代；`qoder/.StudyLens.qoder.site` 是 Qoder Sites 的发布元数据（含 projectId / siteId / deploymentId / artifact 摘要） |
 | 实际使用 seekdb | `qoder/src/db.mjs` 建表并建 `FULLTEXT ... WITH PARSER ik` 索引；`qoder/src/ingest.mjs` 按 `(doc, heading)` 幂等导入；`qoder/src/search.mjs` 用 `MATCH(body) AGAINST(?) IN NATURAL LANGUAGE MODE` 取 BM25 分数 |
 | 通过 Qoder Sites 发布 | 线上地址 https://studylens-lqny1ayu3yc.qoder.zone （public，无需登录） |
-| 核心功能可运行 | 页面默认即展示 seekdb 实测检索结果；任意关键词在 28 个切片上按 BM25 排序；索引内嵌，`file://` 或任意静态服务器均可运行 |
+| 核心功能可运行 | `cd qoder && npm start` 后：`/api/health` 返回索引规模、`/api/search?q=…` 返回命中 JSON、页面输入即搜；另有 `Dockerfile` / `docker-compose.yml` 一条命令起服务 |
 
 ### 用 seekdb 重建索引（可选，需要 seekdb 运行时）
 

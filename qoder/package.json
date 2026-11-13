@@ -4,12 +4,20 @@
   "private": true,
   "type": "module",
   "description": "StudyLens — seekdb 驱动的学习资料检索工作台（OceanBase 2026 大赛 Qoder 赛题）",
+  "main": "src/serve.mjs",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "start": "node src/serve.mjs",
+    "dev": "node src/serve.mjs",
+    "preview": "node src/serve.mjs",
+    "smoke": "node src/smoke.mjs",
     "ingest": "node src/ingest.mjs",
     "search": "node src/search.mjs",
     "export": "node src/search.mjs --export"
   },
-  "dependencies": {
+  "optionalDependencies": {
     "@oceanbase/seekdb-node": "^1.4.0",
     "mysql2": "^3.11.0"
   }
