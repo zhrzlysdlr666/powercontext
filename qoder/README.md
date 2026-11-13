@@ -40,7 +40,8 @@ node main.mjs          # = npm run selfcheck
 ```
 
 不需要 `npm install`：自检与服务只用 Node 内置模块（Node ≥ 18）。它会自己挑端口起服务、
-打 4 次检索、读一次页面、再关掉，**不依赖外网**。
+打 4 次检索、读一次页面、再关掉，**不依赖外网**。没有 node 的环境用 `python main.py`，
+它读同一份索引、用同一组 BM25 参数复算，输出同样的 `SELFCHECK PASS`。
 
 **B. 服务模式（给浏览器，常驻）**
 
