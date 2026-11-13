@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>StudyLens · seekdb 学习资料检索台</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --panel:#fff; --ink:#16202c; --muted:#65717f;
+    --line:#e3e7ee; --brand:#0b6b5f; --brand-2:#0f8a78; --chip:#eef4f2;
+    --hit:#0b6b5f; --warn:#b45309;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  a{color:var(--brand)}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+  header.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:22px;letter-spacing:.2px}
+  .dot{width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:inline-block}
+  .sub{color:var(--muted);font-size:13.5px}
+  .badge{margin-left:auto;font-size:12px;color:var(--brand);background:var(--chip);
+    border:1px solid #d6e6e2;border-radius:999px;padding:3px 10px;white-space:nowrap}
+
+  .search{margin:20px 0 14px;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(16,32,44,.04)}
+  .searchbar{display:flex;gap:10px}
+  #q{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    font-size:15px;outline:none;background:#fcfdfd}
+  #q:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(15,138,120,.12)}
+  button.go{border:0;border-radius:10px;padding:0 20px;background:var(--brand);color:#fff;
+    font-size:15px;font-weight:600;cursor:pointer}
+  button.go:hover{background:var(--brand-2)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{font-size:13px;color:#2a4a45;background:var(--chip);border:1px solid #dcebe7;
+    border-radius:999px;padding:4px 11px;cursor:pointer;transition:.15s}
+  .chip:hover{background:#e2f0ec;border-color:#bcdcd4}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:10px}
+
+  .meta{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:6px 0 16px}
+  .meta b{color:var(--ink);font-weight:600}
+
+  .results{display:grid;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h3{margin:0 0 6px;font-size:15.5px;line-height:1.4}
+  .card .src{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+  .card .snip{font-size:13.5px;color:#39424e}
+  .card .snip em{font-style:normal;background:#fff3c4;border-radius:3px;padding:0 2px}
+  .score{float:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--hit);
+    background:var(--chip);border-radius:999px;padding:2px 9px;margin-left:10px}
+  .tag{font-size:11.5px;color:#5b6b7a;background:#f0f3f7;border-radius:5px;padding:1px 6px;margin-right:6px}
+
+  .empty{color:var(--muted);background:var(--panel);border:1px dashed var(--line);
+    border-radius:12px;padding:26px;text-align:center}
+
+  section.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:18px;margin-top:26px}
+  section.panel h2{margin:0 0 4px;font-size:15px}
+  section.panel p.lead{margin:0 0 14px;color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #eef1f5}
+  th{color:var(--muted);font-weight:500;font-size:12.5px}
+  td.num{font-variant-numeric:tabular-nums;color:#3b4754}
+  .bar{height:6px;border-radius:3px;background:#eef2f6;overflow:hidden;min-width:60px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2))}
+  footer{margin-top:26px;color:var(--muted);font-size:12.5px;line-height:1.8}
+  code{background:#f1f4f8;border-radius:4px;padding:1px 5px;font-size:12.5px}
+  @media (max-width:640px){
+    .wrap{padding:18px 14px 44px}
+    .searchbar{flex-direction:column}
+    button.go{padding:11px}
+    .badge{margin-left:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="logo"><span class="dot"></span>StudyLens</span>
+    <span class="sub">seekdb 驱动的学习资料检索工作台</span>
+    <span class="badge" id="engineBadge">引擎：seekdb · IK 分词 · BM25</span>
+  </header>
+
+  <div class="search">
+    <div class="searchbar">
+      <input id="q" placeholder="输入关键词，例如：中文分词 / 倒排索引 / 切片策略 / 并行度" autocomplete="off" />
+      <button class="go" id="go">检索</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="hint" id="hint">预置查询直接展示 seekdb 的真实命中与耗时；其他关键词在已导出的切片上做本地近似检索。</div>
+  </div>
+
+  <div class="meta" id="meta"></div>
+  <div class="results" id="results"></div>
+
+  <section class="panel">
+    <h2>检索基准（seekdb 实测）</h2>
+    <p class="lead">下表为导出数据时对 12 组预置查询的真实检索结果，含命中数与端到端耗时。</p>
+    <table>
+      <thead><tr><th>查询</th><th style="width:90px">命中</th><th style="width:110px">耗时</th><th style="width:140px"></th></tr></thead>
+      <tbody id="bench"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>资料库构成</h2>
+    <p class="lead">按二级标题切片，标题拼入正文以提升命中；<code>(doc, heading)</code> 唯一键保证导入幂等。</p>
+    <table>
+      <thead><tr><th>文档</th><th style="width:110px">主题</th><th style="width:90px">切片</th></tr></thead>
+      <tbody id="docs"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    StudyLens · 2026 OceanBase 数据库大赛「Qoder」赛题作品<br />
+    检索与中文分词由本地 seekdb（<code>FULLTEXT ... WITH PARSER ik</code>）完成，站点通过 Qoder Sites 发布。<br />
+    数据生成时间：<span id="gen">—</span>
+  </footer>
+</div>
+
+<script>
+const state = { data: null, presetMap: new Map() };
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 中文按二元组切，英文按词切，用于本地近似检索
+function terms(q){
+  const s = q.toLowerCase().replace(/[，。、；：？！“”‘’（）《》【】,.;:?!"'()\[\]<>]/g, ' ').trim();
+  const out = new Set();
+  for (const w of s.split(/\s+/).filter(Boolean)) {
+    if (/^[\x00-\x7f]+$/.test(w)) out.add(w);
+    else {
+      if (w.length === 1) out.add(w);
+      for (let i = 0; i + 1 < w.length; i++) out.add(w.slice(i, i + 2));
+    }
+  }
+  return [...out];
+}
+
+function localSearch(q, limit = 8){
+  const ts = terms(q);
+  if (!ts.length) return [];
+  return state.data.chunks.map((c) => {
+    const body = (c.heading + ' ' + c.body).toLowerCase();
+    let score = 0;
+    for (const t of ts) {
+      let n = 0, i = 0;
+      while ((i = body.indexOf(t, i)) !== -1) { n++; i += t.length; }
+      if (n) score += (1 + Math.log(n)) * (c.heading.toLowerCase().includes(t) ? 2.2 : 1);
+    }
+    return { ...c, score: score ? Number(score.toFixed(3)) : 0 };
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+function highlight(text, q){
+  let out = esc(text);
+  for (const t of terms(q).filter((x) => x.length > 1).sort((a, b) => b.length - a.length).slice(0, 8)) {
+    out = out.replace(new RegExp(esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (m) => `<em>${m}</em>`);
+  }
+  return out;
+}
+
+function renderHits(q, hits, source){
+  const box = $('#results');
+  if (!hits.length) {
+    box.innerHTML = `<div class="empty">没有命中「${esc(q)}」。试试更短的关键词，或点上面的预置查询。</div>`;
+    return;
+  }
+  box.innerHTML = hits.map((h) => `
+    <div class="card">
+      <span class="score">${source === 'seekdb' ? 'score ' + h.score : '本地 ' + h.score}</span>
+      <h3>${highlight(h.heading, q)}</h3>
+      <div class="src"><span class="tag">${esc(h.topic)}</span>${esc(h.doc)}</div>
+      <div class="snip">${highlight(h.snippet || h.body, q)}</div>
+    </div>`).join('');
+}
+
+function updateMeta(hits, source, latency){
+  const d = state.data;
+  $('#meta').innerHTML = `
+    <span>切片 <b>${d.totalChunks}</b></span>
+    <span>文档 <b>${d.documents.length}</b></span>
+    <span>命中 <b>${hits.length}</b></span>
+    <span>来源 <b>${source === 'seekdb' ? 'seekdb 实时结果' : '本地近似'}</b></span>
+    ${latency ? `<span>耗时 <b>${latency} ms</b></span>` : ''}`;
+}
+
+function run(q){
+  q = (q || '').trim();
+  if (!q) return;
+  const preset = state.presetMap.get(q);
+  if (preset) {
+    renderHits(q, preset.hits, 'seekdb');
+    updateMeta(preset.hits, 'seekdb', preset.latencyMs);
+    $('#hint').textContent = `「${q}」是预置查询：命中与耗时均来自 seekdb 实测。`;
+  } else {
+    const hits = localSearch(q);
+    renderHits(q, hits, 'local');
+    updateMeta(hits, 'local', null);
+    $('#hint').textContent = `「${q}」为本地近似检索（已导出切片上的二元组匹配）。预置查询可看 seekdb 实测结果。`;
+  }
+}
+
+async function boot(){
+  const res = await fetch('./data/index.json', { cache: 'no-store' });
+  const d = await res.json();
+  state.data = d;
+  for (const item of d.queries) state.presetMap.set(item.q, item);
+
+  $('#engineBadge').textContent = `引擎：${d.engine}`;
+  $('#gen').textContent = new Date(d.generatedAt).toLocaleString('zh-CN');
+  $('#chips').innerHTML = d.queries.slice(0, 8).map((x) => `<span class="chip">${esc(x.q)}</span>`).join('');
+  $('#chips').querySelectorAll('.chip').forEach((el) => el.addEventListener('click', () => {
+    $('#q').value = el.textContent; run(el.textContent);
+  }));
+
+  const maxMs = Math.max(...d.queries.map((x) => x.latencyMs));
+  $('#bench').innerHTML = d.queries.map((x) => `
+    <tr>
+      <td>${esc(x.q)}</td>
+      <td class="num">${x.hits.length}</td>
+      <td class="num">${x.latencyMs.toFixed(2)} ms</td>
+      <td><div class="bar"><i style="width:${Math.max(6, (x.latencyMs / maxMs) * 100)}%"></i></div></td>
+    </tr>`).join('');
+
+  $('#docs').innerHTML = d.documents.map((x) => `
+    <tr><td>${esc(x.doc)}</td><td>${esc(x.topic)}</td><td class="num">${x.chunks}</td></tr>`).join('');
+
+  const first = d.queries[0];
+  if (first) { $('#q').value = first.q; run(first.q); }
+}
+
+$('#go').addEventListener('click', () => run($('#q').value));
+$('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') run($('#q').value); });
+boot().catch((e) => {
+  $('#results').innerHTML = `<div class="empty">数据加载失败：${esc(e.message)}</div>`;
+});
+</script>
+</body>
+</html>
