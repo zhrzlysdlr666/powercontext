@@ -19,10 +19,13 @@
 ### 30 秒验证
 
 ```bash
-git clone <this repo> && cd <repo>
+# 仓库已在本机时（判题/评审场景），直接：
 python main.py                 # 自检：读索引复算 BM25 → 打印 SELFCHECK PASS，退出码 0，约 1 秒
 node main.mjs                  # 同一套检查的 node 版（环境里有 node 时）
-# 等价写法：cd qoder && python main.py
+
+# 从零克隆时：
+git clone https://github.com/zhrzlysdlr666/powercontext.git && cd powercontext
+python main.py
 ```
 
 两者都不需要 `npm install`，也不依赖外网。要看页面：

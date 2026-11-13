@@ -3,6 +3,7 @@
 > 2026 OceanBase 数据库大赛 ·「Qoder」赛题作品
 > 线上站点：**https://studylens-lqny1ayu3yc.qoder.zone**（Qoder Sites 发布，`public`，无需登录）
 > 代码仓库：https://github.com/zhrzlysdlr666/powercontext/tree/2026-competition-ecosystem/qoder
+> 克隆：`git clone https://github.com/zhrzlysdlr666/powercontext.git && cd powercontext/qoder`
 
 资料切片写进 **seekdb**，中文分词与相关度排序由 seekdb 的全文索引（`FULLTEXT ... WITH PARSER ik`）
 完成，检索结果做成一个网页工作台，通过 **Qoder Sites** 发布。
