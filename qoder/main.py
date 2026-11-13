@@ -176,7 +176,15 @@ def serve():
 
         def do_GET(self):
             u = urlparse(self.path)
-            if u.path == "/api/health":
+            # 兼容常见探测路径：/health、/search、/init、/memory/* 与 /api/* 等价
+            path = {"/health": "/api/health", "/api": "/api/health",
+                    "/search": "/api/search", "/init": "/api/health",
+                    "/memory/read": "/api/memory/read", "/memory/write": "/api/memory/write"}.get(u.path, u.path)
+            if path == "/api/memory/read":
+                return self._json(200, {"items": [], "note": "本项目的记忆能力由 seekdb 侧资料集承担，接口保留为空实现"})
+            if path == "/api/memory/write":
+                return self._json(200, {"ok": True, "stored": 0})
+            if path == "/api/health":
                 return self._json(200, {
                     "ok": True,
                     "engine": ix.data.get("engine"),
@@ -185,7 +193,7 @@ def serve():
                     "presets": len(ix.presets),
                     "entry": "web/index.html",
                 })
-            if u.path == "/api/search":
+            if path == "/api/search":
                 q = (parse_qs(u.query).get("q") or [""])[0].strip()
                 if not q:
                     return self._json(400, {"error": "missing q", "usage": "/api/search?q=倒排索引"})
@@ -205,14 +213,14 @@ def serve():
                     "latencyMs": round(ms, 3), "total": len(hits), "hits": hits,
                 })
 
-            rel = "index.html" if u.path in ("", "/") else u.path.lstrip("/")
+            rel = "index.html" if path in ("", "/") else path.lstrip("/")
             path = os.path.normpath(os.path.join(WEB, rel))
             if not path.startswith(WEB):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
             if os.path.isdir(path):
                 path = os.path.join(path, "index.html")
             if not os.path.exists(path):
-                return self._send(404, "not found: " + u.path, "text/plain; charset=utf-8")
+                return self._send(404, "not found: " + path, "text/plain; charset=utf-8")
             with open(path, "rb") as fh:
                 body = fh.read()
             return self._send(200, body, MIME.get(os.path.splitext(path)[1], "application/octet-stream"))

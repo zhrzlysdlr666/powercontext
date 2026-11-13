@@ -103,7 +103,11 @@ const server = createServer(async (req, res) => {
   const [pathPart, queryPart = ''] = (req.url || '/').split('?');
   const url = decodeURIComponent(pathPart);
 
-  if (url === '/api/health') {
+  // 兼容常见探测路径：/health、/search?q= 与 /api/* 等价
+  const alias = { '/health': '/api/health', '/search': '/api/search', '/api': '/api/health' }[url];
+  const route = alias || url;
+
+  if (route === '/api/health') {
     try {
       const d = await load();
       return json(res, 200, {
@@ -119,7 +123,7 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  if (url === '/api/search') {
+  if (route === '/api/search') {
     const q = new URLSearchParams(queryPart).get('q') || '';
     if (!q.trim()) return json(res, 400, { error: 'missing q', usage: '/api/search?q=倒排索引' });
     try {
