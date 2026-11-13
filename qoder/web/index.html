@@ -79,11 +79,12 @@
     <span class="logo"><span class="dot"></span>StudyLens</span>
     <span class="sub">seekdb 驱动的学习资料检索工作台</span>
     <span class="badge" id="engineBadge">引擎：seekdb · IK 分词 · BM25</span>
+    <a class="badge" id="repoLink" href="https://github.com/zhrzlysdlr666/powercontext/tree/2026-competition-ecosystem" target="_blank" rel="noopener" style="text-decoration:none">代码仓库 · qoder/</a>
   </header>
 
   <div class="search">
     <div class="searchbar">
-      <input id="q" placeholder="输入关键词，例如：中文分词 / 倒排索引 / 切片策略 / 并行度" autocomplete="off" />
+      <input id="q" placeholder="输入关键词即时检索，例如：中文分词 / 倒排索引 / 切片策略 / 并行度" autocomplete="off" />
       <button class="go" id="go">检索</button>
     </div>
     <div class="chips" id="chips"><!--B:chips--><span class="chip">中文分词器怎么选</span><span class="chip">倒排索引 词项 查找</span><span class="chip">BM25 相关度打分</span><span class="chip">RAG 召回质量</span><span class="chip">切片策略 语义边界</span><span class="chip">混合检索 RRF</span><span class="chip">seekdb 内存预算</span><span class="chip">全文索引 增量更新</span>
@@ -1087,6 +1088,12 @@ async function boot(){
 
 $('#go').addEventListener('click', () => run($('#q').value));
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') run($('#q').value); });
+// 即时检索：输入即搜，无需回车（120ms 防抖，避免每个字符都重排）
+let liveT = null;
+$('#q').addEventListener('input', () => {
+  if (liveT) clearTimeout(liveT);
+  liveT = setTimeout(() => run($('#q').value), 120);
+});
 boot().catch((e) => {
   $('#results').innerHTML = `<div class="empty">数据加载失败：${esc(e.message)}</div>`;
 });
