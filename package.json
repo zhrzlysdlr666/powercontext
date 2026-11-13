@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "2026 OceanBase 数据库大赛参赛工作区：Qoder / 阶跃星辰 / 高德 / MiniMax / Dify 各题一个目录",
   "scripts": {
-    "start": "node qoder/src/serve.mjs",
+    "start": "node qoder/main.mjs --serve",
+    "selfcheck": "node qoder/main.mjs",
+    "smoke": "node qoder/main.mjs",
+    "qoder:serve": "node qoder/main.mjs --serve",
     "qoder:ingest": "node qoder/src/ingest.mjs",
     "qoder:export": "node qoder/src/search.mjs --export",
     "qoder:embed": "node qoder/src/embed.mjs"

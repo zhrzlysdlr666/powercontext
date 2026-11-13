@@ -9,10 +9,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node src/serve.mjs",
-    "dev": "node src/serve.mjs",
-    "preview": "node src/serve.mjs",
-    "smoke": "node src/smoke.mjs",
+    "selfcheck": "node main.mjs",
+    "smoke": "node main.mjs",
+    "start": "node main.mjs --serve",
+    "serve": "node main.mjs --serve",
+    "dev": "node main.mjs --serve",
+    "preview": "node main.mjs --serve",
     "ingest": "node src/ingest.mjs",
     "search": "node src/search.mjs",
     "export": "node src/search.mjs --export"
@@ -20,5 +22,8 @@
   "optionalDependencies": {
     "@oceanbase/seekdb-node": "^1.4.0",
     "mysql2": "^3.11.0"
+  },
+  "bin": {
+    "studylens": "main.mjs"
   }
 }

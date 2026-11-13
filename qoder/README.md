@@ -25,30 +25,41 @@ StudyLens 把资料按语义边界（二级标题）切片入 seekdb，用 IK �
 | HTTP 检索接口 | `GET /api/search?q=倒排索引` | 评审或脚本可直接探测的接口，返回 JSON；`GET /api/health` 返回索引规模 |
 | 实测基准 | 页面下方表格 | 12 组预置查询的命中数与端到端耗时，导出时由 seekdb 实测 |
 
-## 3. 快速开始（三种方式，任选其一）
+## 3. 快速开始
 
-**A. 零依赖启动（推荐，不需要装任何包）**
+**A. 自检模式（几秒结束，退出码 0，适合自动化核对）**
 
 ```bash
 cd qoder
-npm start                 # = node src/serve.mjs，监听 PORT，默认 3000
+node main.mjs          # = npm run selfcheck
+# StudyLens selfcheck
+#   ok   server up — chunks=28 docs=5
+#   ok   search "中文分词器怎么选" — 4 hits, 0.761 ms, engine=seekdb, ...
+#   ...
+# SELFCHECK PASS
 ```
 
-不需要 `npm install`：静态服务与 BM25 排序只用 Node 内置模块（Node ≥ 18）。
+不需要 `npm install`：自检与服务只用 Node 内置模块（Node ≥ 18）。它会自己挑端口起服务、
+打 4 次检索、读一次页面、再关掉，**不依赖外网**。
 
-**B. Docker 一条命令**
+**B. 服务模式（给浏览器，常驻）**
 
 ```bash
-cd qoder
+node main.mjs --serve      # = npm start，默认 3000 端口（$PORT 可改）
+# 打开 http://127.0.0.1:3000
+```
+
+**C. Docker 一条命令**
+
+```bash
 docker compose up --build      # 或 docker build -t studylens . && docker run -p 3000:3000 studylens
 ```
 
-**C. 直接打开文件**
+**D. 直接打开文件**
 
 `web/index.html` 把索引数据内联在页面里，双击用浏览器打开（`file://`）同样可以检索。
 
-打开 <http://localhost:3000> 后，搜索框已预填「中文分词器怎么选」并展示 seekdb 实测结果；
-在框里输入任意关键词，结果即时重排。
+服务模式下搜索框已预填「中文分词器怎么选」并展示 seekdb 实测结果；在框里输入任意关键词，结果即时重排。
 
 ## 4. 验证样例（可逐步执行，含预期输出）
 

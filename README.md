@@ -20,20 +20,25 @@
 
 ```bash
 git clone <this repo> && cd <repo>/qoder
-npm start                      # 零依赖静态服务 + 检索接口，默认 3000 端口；不需要 npm install
-# 打开 http://localhost:3000
+node main.mjs                  # 自检：起服务→打 4 次检索→打印 SELFCHECK PASS，退出码 0，数秒结束
 ```
 
-也可以一条命令起容器：`cd qoder && docker compose up --build`。
+不需要 `npm install`（只用 Node 内置模块，Node ≥ 18）。要看页面：
 
-跑通主要功能的判据（不需要浏览器）：
+```bash
+node main.mjs --serve          # 或 npm start，常驻 3000 端口
+# 打开 http://127.0.0.1:3000
+```
+
+一条命令起容器：`cd qoder && docker compose up --build`。
+
+不打开浏览器也能验证主要功能：
 
 ```bash
 curl -s localhost:3000/api/health
 # {"ok":true,"engine":"seekdb (FULLTEXT + IK parser, BM25)","chunks":28,"docs":5,"presets":12,"entry":"web/index.html"}
 curl -s "localhost:3000/api/search?q=%E5%80%92%E6%8E%92%E7%B4%A2%E5%BC%95"
-# {"q":"倒排索引","engine":"bm25","total":8,"latencyMs":0.4,"hits":[{"doc":"全文索引与中文分词","heading":"倒排索引的基本结构","score":10.345,...
-npm run smoke                  # 上面两步的一键版，最后打印 SMOKE OK
+# {"q":"倒排索引","engine":"bm25","total":8,"latencyMs":0.39,"hits":[{"doc":"全文索引与中文分词","heading":"倒排索引的基本结构","score":10.345,...
 ```
 
 页面打开后：
