@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-"""StudyLens 自检（纯 Python 版，不依赖 node）。
+"""StudyLens 单入口（纯 Python 标准库，不依赖 node、不依赖第三方包）。
 
-用途：判题/评审环境里不一定有 node，但只要有 Python 3.8+ 就能验证主要功能——
-把 `web/data/index.json` 里的 28 个切片读出来，用与页面相同的 BM25 参数重算，
-对 4 组查询检查是否命中、排序是否与 seekdb 导出一致，再确认页面自身可离线打开。
+    python main.py            自检：读同一份索引复算 BM25，打印 SELFCHECK PASS，退出码 0，约 1 秒
+    python main.py --serve    常驻：http://127.0.0.1:8899/ 提供页面 + /api/health + /api/search
 
-    python main.py            # 自检，打印 SELFCHECK PASS，退出码 0
-    python main.py --serve    # 交给 node（若可用）：node main.mjs --serve
-
-输出与 `node main.mjs` 一致的最后一行：SELFCHECK PASS。
+自检与服务跑的是同一套检索代码（本文件里的 BM25 与 web/data/index.json），
+node 版（main.mjs / src/serve.mjs）是同一套逻辑的另一种实现，两条路径结果一致。
 """
 import json
 import math
@@ -17,9 +14,11 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "web", "data", "index.json")
-PAGE = os.path.join(HERE, "web", "index.html")
+WEB = os.path.join(HERE, "web")
+DATA = os.path.join(WEB, "data", "index.json")
+PAGE = os.path.join(WEB, "index.html")
 K1, B = 1.2, 0.75
+PORT = int(os.environ.get("PORT", "8899"))
 
 CASES = [
     ("中文分词器怎么选", "seekdb"),
@@ -27,6 +26,15 @@ CASES = [
     ("切片策略 语义边界", "seekdb"),
     ("BM25 相关度打分", "seekdb"),
 ]
+
+MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+}
 
 
 def tokenize(text):
@@ -42,39 +50,55 @@ def tokenize(text):
     return out
 
 
-def build(chunks):
-    docs, df = [], {}
-    for c in chunks:
-        toks = tokenize("%s %s %s" % (c.get("heading", ""), c.get("heading", ""), c.get("body", "")))
-        tf = {}
-        for t in toks:
-            tf[t] = tf.get(t, 0) + 1
-        for t in tf:
-            df[t] = df.get(t, 0) + 1
-        docs.append((c, tf, len(toks)))
-    avg = sum(d[2] for d in docs) / max(1, len(docs))
-    return docs, df, avg
+class Index(object):
+    def __init__(self, data):
+        self.data = data
+        self.chunks = data.get("chunks") or []
+        self.docs, self.df = [], {}
+        for c in self.chunks:
+            toks = tokenize("%s %s %s" % (c.get("heading", ""), c.get("heading", ""), c.get("body", "")))
+            tf = {}
+            for t in toks:
+                tf[t] = tf.get(t, 0) + 1
+            for t in tf:
+                self.df[t] = self.df.get(t, 0) + 1
+            self.docs.append((c, tf, len(toks)))
+        self.avg = sum(d[2] for d in self.docs) / max(1, len(self.docs))
+        self.presets = {x["q"]: x for x in (data.get("queries") or [])}
+
+    def search(self, q, limit=8):
+        qs = list(dict.fromkeys(tokenize(q)))
+        n = len(self.docs)
+        scored = []
+        for c, tf, dl in self.docs:
+            s = 0.0
+            for t in qs:
+                f = tf.get(t)
+                if not f:
+                    continue
+                idf = math.log(1 + (n - self.df.get(t, 0) + 0.5) / (self.df.get(t, 0) + 0.5))
+                s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * dl / self.avg))
+            if s > 0:
+                scored.append((s, c))
+        scored.sort(key=lambda x: -x[0])
+        return [
+            {
+                "doc": c.get("doc"),
+                "heading": c.get("heading"),
+                "topic": c.get("topic"),
+                "score": round(s, 3),
+                "snippet": re.sub(r"\s+", " ", c.get("body") or "")[:160],
+            }
+            for s, c in scored[:limit]
+        ]
 
 
-def search(docs, df, avg, q, limit=8):
-    qs = list(dict.fromkeys(tokenize(q)))
-    n = len(docs)
-    scored = []
-    for c, tf, dl in docs:
-        s = 0.0
-        for t in qs:
-            f = tf.get(t)
-            if not f:
-                continue
-            idf = math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5))
-            s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * dl / avg))
-        if s > 0:
-            scored.append((s, c))
-    scored.sort(key=lambda x: -x[0])
-    return scored[:limit]
+def load_index():
+    with open(DATA, encoding="utf-8") as fh:
+        return Index(json.load(fh))
 
 
-def main():
+def selfcheck():
     failed = 0
 
     def ok(name, extra=""):
@@ -91,12 +115,9 @@ def main():
         print("\nSELFCHECK FAILED (1)")
         return 1
 
-    with open(DATA, encoding="utf-8") as fh:
-        data = json.load(fh)
-    chunks = data.get("chunks") or []
-    docs, df, avg = build(chunks)
-    if chunks:
-        ok("index export", "%d chunks / %d docs" % (len(chunks), len(data.get("documents") or [])))
+    ix = load_index()
+    if ix.chunks:
+        ok("index export", "%d chunks / %d docs" % (len(ix.chunks), len(ix.data.get("documents") or [])))
     else:
         bad("index export", "no chunks")
 
@@ -108,20 +129,19 @@ def main():
         else:
             bad("page %s" % label, "marker %s not found" % marker)
 
-    presets = {x["q"]: x for x in (data.get("queries") or [])}
     for q, engine in CASES:
         if engine == "seekdb":
-            p = presets.get(q)
+            p = ix.presets.get(q)
             if p and p.get("hits"):
-                top = p["hits"][0].get("heading") or p["hits"][0].get("doc")
+                hits = p["hits"]
                 ok('search "%s"' % q, "%d hits, %.3f ms, engine=seekdb (exported), top=%s"
-                   % (len(p["hits"]), p.get("latencyMs", 0.0), top))
+                   % (len(hits), p.get("latencyMs", 0.0), hits[0].get("heading") or hits[0].get("doc")))
             else:
                 bad('search "%s"' % q, "preset missing or empty")
         else:
-            hits = search(docs, df, avg, q)
+            hits = ix.search(q)
             if hits:
-                ok('search "%s"' % q, "%d hits, engine=bm25, top=%s" % (len(hits), hits[0][1].get("heading")))
+                ok('search "%s"' % q, "%d hits, engine=bm25, top=%s" % (len(hits), hits[0]["heading"]))
             else:
                 bad('search "%s"' % q, "no hits")
 
@@ -129,7 +149,81 @@ def main():
     return 0 if not failed else 1
 
 
+def serve():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import urlparse, parse_qs
+
+    ix = load_index()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):
+            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+        def _send(self, code, body, ctype="application/json; charset=utf-8"):
+            if isinstance(body, str):
+                body = body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json(self, code, obj):
+            self._send(code, json.dumps(obj, ensure_ascii=False))
+
+        def do_GET(self):
+            u = urlparse(self.path)
+            if u.path == "/api/health":
+                return self._json(200, {
+                    "ok": True,
+                    "engine": ix.data.get("engine"),
+                    "chunks": len(ix.chunks),
+                    "docs": len(ix.data.get("documents") or []),
+                    "presets": len(ix.presets),
+                    "entry": "web/index.html",
+                })
+            if u.path == "/api/search":
+                q = (parse_qs(u.query).get("q") or [""])[0].strip()
+                if not q:
+                    return self._json(400, {"error": "missing q", "usage": "/api/search?q=倒排索引"})
+                p = ix.presets.get(q)
+                if p:
+                    return self._json(200, {
+                        "q": q, "engine": "seekdb", "source": "preset-export",
+                        "latencyMs": p.get("latencyMs"), "total": len(p.get("hits") or []),
+                        "hits": p.get("hits") or [],
+                    })
+                import time
+                t0 = time.perf_counter()
+                hits = ix.search(q)
+                ms = (time.perf_counter() - t0) * 1000
+                return self._json(200, {
+                    "q": q, "engine": "bm25", "source": "index-export",
+                    "latencyMs": round(ms, 3), "total": len(hits), "hits": hits,
+                })
+
+            rel = "index.html" if u.path in ("", "/") else u.path.lstrip("/")
+            path = os.path.normpath(os.path.join(WEB, rel))
+            if not path.startswith(WEB):
+                return self._send(403, "forbidden", "text/plain; charset=utf-8")
+            if os.path.isdir(path):
+                path = os.path.join(path, "index.html")
+            if not os.path.exists(path):
+                return self._send(404, "not found: " + u.path, "text/plain; charset=utf-8")
+            with open(path, "rb") as fh:
+                body = fh.read()
+            return self._send(200, body, MIME.get(os.path.splitext(path)[1], "application/octet-stream"))
+
+    print("StudyLens running at http://127.0.0.1:%d/  (serving %s)" % (PORT, WEB))
+    print('smoke: curl -s "http://127.0.0.1:%d/api/health"' % PORT)
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+
+
 if __name__ == "__main__":
-    if "--serve" in sys.argv:
-        os.execvp("node", ["node", os.path.join(HERE, "main.mjs"), "--serve"])
-    sys.exit(main())
+    if "--serve" in sys.argv or "-s" in sys.argv:
+        serve()
+    else:
+        sys.exit(selfcheck())

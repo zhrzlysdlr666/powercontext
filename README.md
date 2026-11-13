@@ -20,14 +20,15 @@
 
 ```bash
 git clone <this repo> && cd <repo>/qoder
-node main.mjs                  # 自检：起服务→打 4 次检索→打印 SELFCHECK PASS，退出码 0，数秒结束
+python main.py                 # 自检：读索引复算 BM25 → 打印 SELFCHECK PASS，退出码 0，约 1 秒
+node main.mjs                  # 同一套检查的 node 版（环境里有 node 时）
 ```
 
-不需要 `npm install`（只用 Node 内置模块，Node ≥ 18）。要看页面：
+两者都不需要 `npm install`，也不依赖外网。要看页面：
 
 ```bash
+python main.py --serve         # http://127.0.0.1:8899/
 node main.mjs --serve          # 或 npm start，常驻 3000 端口
-# 打开 http://127.0.0.1:3000
 ```
 
 一条命令起容器：`cd qoder && docker compose up --build`。

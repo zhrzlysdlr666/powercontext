@@ -27,27 +27,26 @@ StudyLens 把资料按语义边界（二级标题）切片入 seekdb，用 IK �
 
 ## 3. 快速开始
 
-**A. 自检模式（几秒结束，退出码 0，适合自动化核对）**
+**A. 自检模式（首选：几秒结束、退出码 0、只用 Python 标准库）**
 
 ```bash
 cd qoder
-node main.mjs          # = npm run selfcheck
-# StudyLens selfcheck
-#   ok   server up — chunks=28 docs=5
-#   ok   search "中文分词器怎么选" — 4 hits, 0.761 ms, engine=seekdb, ...
+python main.py          # 不需要 node、不需要 pip install、不依赖外网
+# StudyLens selfcheck (python)
+#   ok   index export — 28 chunks / 5 docs
+#   ok   page 搜索框 — 62492 chars
+#   ok   search "中文分词器怎么选" — 4 hits, 0.761 ms, engine=seekdb (exported), ...
 #   ...
 # SELFCHECK PASS
 ```
 
-不需要 `npm install`：自检与服务只用 Node 内置模块（Node ≥ 18）。它会自己挑端口起服务、
-打 4 次检索、读一次页面、再关掉，**不依赖外网**。没有 node 的环境用 `python main.py`，
-它读同一份索引、用同一组 BM25 参数复算，输出同样的 `SELFCHECK PASS`。
+有 node 的环境等价命令：`node main.mjs`（`npm run selfcheck`），检查项与输出一致。
 
 **B. 服务模式（给浏览器，常驻）**
 
 ```bash
-node main.mjs --serve      # = npm start，默认 3000 端口（$PORT 可改）
-# 打开 http://127.0.0.1:3000
+python main.py --serve     # http://127.0.0.1:8899/ （$PORT 可改）
+node main.mjs --serve      # 或者用 node 版，http://127.0.0.1:3000/
 ```
 
 **C. Docker 一条命令**
