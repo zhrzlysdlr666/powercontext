@@ -1,0 +1,18 @@
+{
+  "name": "minimax-sdd-context",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SDD engineering context module: seekdb-backed retrieval + MiniMax code change + PowerContext task state",
+  "scripts": {
+    "db": "node tools/start-seekdb.mjs",
+    "import": "node src/cli.mjs import",
+    "context": "node src/cli.mjs context",
+    "dev": "node src/cli.mjs dev",
+    "state": "node src/cli.mjs state"
+  },
+  "dependencies": {
+    "@oceanbase/seekdb-node": "^1.4.0",
+    "mysql2": "^3.11.0"
+  }
+}

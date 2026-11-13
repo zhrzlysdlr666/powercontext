@@ -1,0 +1,4 @@
+node_modules/
+data/
+sample/app/*.orig
+evidence/
