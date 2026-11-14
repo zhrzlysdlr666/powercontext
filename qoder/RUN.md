@@ -21,6 +21,9 @@ python main.py --serve
 node main.mjs --serve # 或 cd qoder && npm start，默认 3000 端口
 ```
 
+两个入口都会在 8899 / 3000 / 8000 / 5000 / 8080 上各起一份（被占用则跳过），
+并按 `0.0.0.0` 监听，容器里外都能访问；只需 `PORT` 环境变量即可改主端口。
+
 接口：
 
 - `GET /api/health` → `{"ok":true,"engine":"seekdb ...","chunks":84,"docs":13,"presets":12}`

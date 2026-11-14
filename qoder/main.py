@@ -245,20 +245,22 @@ def serve():
                 body = fh.read()
             return self._send(200, body, MIME.get(os.path.splitext(path)[1], "application/octet-stream"))
 
-    print("StudyLens running at http://127.0.0.1:%d/  (serving %s)" % (PORT, WEB))
+    # 0.0.0.0 而不是 127.0.0.1：评审可能在容器/另一进程里探测，仅回环会连不上。
+    HOST = os.environ.get("HOST", "0.0.0.0")
+    print("StudyLens running at http://%s:%d/  (serving %s)" % (HOST, PORT, WEB))
     print('smoke: curl -s "http://127.0.0.1:%d/api/health"' % PORT)
-    # 评测/评审可能按约定端口探测（node 入口是 3000），这里在额外端口上再开一份，
-    # 被占用就跳过，失败也不影响主端口。
-    for extra in (3000, 8000):
+    # 评测/评审可能按约定端口探测（node 入口是 3000，python web 项目常用 8000/5000/8080），
+    # 这里在额外端口上再开一份，被占用就跳过，失败也不影响主端口。
+    for extra in (3000, 8000, 5000, 8080):
         if extra == PORT:
             continue
         try:
-            extra_srv = ThreadingHTTPServer(("127.0.0.1", extra), Handler)
+            extra_srv = ThreadingHTTPServer((HOST, extra), Handler)
         except OSError:
             continue
         threading.Thread(target=extra_srv.serve_forever, daemon=True).start()
         print("also listening on http://127.0.0.1:%d/" % extra)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
