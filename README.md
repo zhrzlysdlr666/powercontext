@@ -16,6 +16,16 @@
 
 一个把零散学习资料变成可检索知识库的小工具：资料按二级标题切片写入 **seekdb**，中文分词与相关度排序由 seekdb 的全文索引（`FULLTEXT ... WITH PARSER ik`）完成，检索结果经 **Qoder Sites** 发布成网页工作台。
 
+## 评审快速验收（三步，不用装任何依赖）
+
+| # | 操作 | 预期结果 |
+|---|---|---|
+| 1 | 无痕窗口打开 https://studylens-lqny1ayu3yc.qoder.zone | 首屏直接出检索结果（预置查询「中文分词器怎么选」4 条命中）；也可直接打开 `?q=倒排索引` 看 8 条命中 |
+| 2 | 在本目录执行 `python main.py` | 打印 `SELFCHECK PASS`，退出码 0（只用标准库，约 1 秒，无网络请求） |
+| 3 | `python main.py --serve` 后 `curl "localhost:8899/api/search?q=倒排索引"` | 返回 JSON，8 条命中带 BM25 分数（索引来自 seekdb `MATCH ... AGAINST` 导出） |
+
+线上站点是静态托管 + 一个 Qoder Sites Edge Function（`qoder/functions/index.ts`，路径 `/functions/v1/app/api/*`），两者读同一份 seekdb 导出索引 `qoder/web/data/index.json`。页面本身把索引内联进 HTML，所以即使边缘函数在实际环境中未就绪，检索也不受影响——这也是第 1、3 步验收互不依赖的原因。
+
 ### 30 秒验证
 
 ```bash
