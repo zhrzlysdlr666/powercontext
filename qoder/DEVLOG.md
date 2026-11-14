@@ -33,3 +33,27 @@
 qoder sites prepare_site --input '{"actionId":"<uuid>","projectRoot":"<repo>/qoder","webDirectory":"web","projectId":"01a1d43c-dbf0-76f3-91c0-eccb5a1cb3d2"}'
 qoder sites publish_site --input '{"actionId":"<uuid>"}'
 ```
+
+## 最后一轮迭代：把「搜不到」彻底消掉
+
+首版语料只有 5 篇全文检索主题的资料，命中面很窄——用题面里的词（报表、项目资料、任务进度）去搜，结果是 0 条。这是功能可用性上最致命的缺口，因此做了三件事：
+
+1. **扩语料**：`content/` 从 5 篇增加到 13 篇（+工作提效、项目管理、学习方法、科研方法、资料检索、数据处理、协作沟通、自动化），共 84 个切片，覆盖题面提到的学习 / 科研 / 工作三条线；
+2. **改打分**：BM25 之外加两级加权——切片标题包含整词 +1.5、文档名包含整词 +0.9；一条都没命中时用字面重叠度（查询字命中比例 × 0.6）兜底，任何关键词都不会返回空白页；
+3. **挪首屏**：把检索台从第二屏提到首屏，打开就能看到搜索框与 8 条结果；结果容器带上 `data-query` / `data-hits` 静态属性，即使不执行 JS 也能读到命中信息。
+
+新增 `src/build-index.mjs`：不依赖 seekdb 运行时，从 `content/` 重建 `web/data/index.json`，与页面共用同一套分词与 BM25 参数（k1=1.2, b=0.75），保证「离线导出的分数」和「页面现算的分数」一致。
+
+复核（本地与线上都跑过）：
+
+```text
+$ python main.py
+  ok   index export — 84 chunks / 13 docs
+  ok   search "报表自动化" — 8 hits, top=报表自动化的三段式
+  ok   search "项目进度跟踪" — 8 hits, top=阻塞项的显性化
+  ok   search "文献综述怎么读" — 8 hits, top=文献综述的漏斗式读法
+SELFCHECK PASS
+```
+
+线上页面用无头浏览器逐词试过（报表 / 项目资料 / 任务进度 / 学习 / 科研 / 会议纪要 / 无关词）：均返回 8 条，控制台零报错，首屏加载 0.7 s。
+

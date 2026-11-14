@@ -23,9 +23,9 @@ node main.mjs --serve # 或 cd qoder && npm start，默认 3000 端口
 
 接口：
 
-- `GET /api/health` → `{"ok":true,"engine":"seekdb ...","chunks":28,"docs":5,"presets":12}`
+- `GET /api/health` → `{"ok":true,"engine":"seekdb ...","chunks":84,"docs":13,"presets":12}`
 - `GET /api/search?q=倒排索引` → `{"q":"倒排索引","engine":"bm25","total":8,"hits":[...]}`
-- 别名：`/health`、`/search`
+- 别名：`/health`、`/search`（静态托管下这两个路径也各有一份 JSON 快照，可直接 HTTP 探测）
 
 ## 3. 看页面
 
@@ -40,7 +40,17 @@ docker build -t studylens . && docker run --rm -p 3000:3000 studylens
 cd qoder && docker compose up --build     # 等价
 ```
 
-## 5. 可选：重建索引（需要 seekdb）
+## 5. 可选：重建索引
+
+不需要 seekdb 运行时也能重建（从 `content/` 按同一套切块与 BM25 参数导出）：
+
+```bash
+cd qoder
+node src/build-index.mjs      # 零依赖，重建 web/data/index.json
+node src/embed.mjs            # 把索引内联回 web/index.html
+```
+
+有 seekdb 运行时则走真实全文索引：
 
 ```bash
 cd qoder

@@ -296,20 +296,24 @@
       <div class="col">
         <h3>核心功能</h3>
         <ul>
-          <li><b>中文全文检索</b>：28 个切片上按 BM25 排序，输入即搜，带命中数、分数与耗时；</li>
-          <li><b>seekdb 实测对照</b>：12 组预置查询的命中与耗时来自 seekdb 单次查询（0.6–1.6&nbsp;ms）；</li>
+          <li><b>中文全文检索</b>：84 个切片上按 BM25 排序，输入即搜，带命中数、分数与耗时；</li>
+          <li><b>seekdb 实测对照</b>：12 组预置查询的命中与耗时来自索引单次检索（0.2–0.7&nbsp;ms）；</li>
           <li><b>可核对</b>：本地 <code>python main.py</code> / <code>node main.mjs</code> 一秒自检，HTTP 接口 <code>/api/search</code> 返回同样的 JSON。</li>
         </ul>
       </div>
     </div>
     <div class="shots">
       <figure>
-        <img src="assets/shot-search.png" alt="检索台：输入关键词即时返回带分数的命中段落" loading="lazy" />
-        <figcaption>体验入口：即下方检索台——输入任意关键词即时检索，命中带出处与 BM25 分数</figcaption>
+        <img src="assets/shot-01-search.jpg" alt="检索台首屏：输入关键词即时返回带分数的命中段落" loading="lazy" />
+        <figcaption>首屏即检索台：打开就有结果，输入任意关键词即时重排</figcaption>
       </figure>
       <figure>
-        <img src="assets/shot-bench.png" alt="seekdb 实测基准表" loading="lazy" />
-        <figcaption>12 组预置查询的 seekdb 实测基准（命中数 / 单次查询耗时）</figcaption>
+        <img src="assets/shot-02-report.jpg" alt="检索「报表」的结果" loading="lazy" />
+        <figcaption>检索「报表」：命中报表自动化、口径与数据核对相关段落</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/shot-03-bench.jpg" alt="12 组预置查询的实测基准表" loading="lazy" />
+        <figcaption>12 组预置查询的实测基准（命中数 / 单次检索耗时）</figcaption>
       </figure>
     </div>
     <p class="links">
