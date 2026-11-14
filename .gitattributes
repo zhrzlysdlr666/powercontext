@@ -1,0 +1,14 @@
+# 行尾策略：只对「判题机会直接执行/解析」的文件强制 LF。
+# 本机 core.autocrlf=true，不显式声明的话 .sh 在 Windows 上会被写成 CRLF，
+# 到 Linux 上就变成 `\r: not found`。
+*.sh         text eol=lf
+*.py         text eol=lf
+Dockerfile   text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+docker-compose.yml text eol=lf
+
+# 二进制资源不要参与行尾转换
+*.png binary
+*.jpg binary
+*.ico binary
