@@ -19,10 +19,8 @@
     "search": "node src/search.mjs",
     "export": "node src/search.mjs --export"
   },
-  "optionalDependencies": {
-    "@oceanbase/seekdb-node": "^1.4.0",
-    "mysql2": "^3.11.0"
-  },
+  "optionalDependencies": {},
+  "comment_optional": "seekdb 依赖不在这里：主包保持零依赖，npm install 在离线环境也能立即成功。重建索引时再按 README 安装 @oceanbase/seekdb-node 与 mysql2。",
   "bin": {
     "studylens": "main.mjs"
   }

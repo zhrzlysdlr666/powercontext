@@ -102,14 +102,16 @@ npm run smoke
 | 检索 | `src/search.mjs` | `MATCH(body) AGAINST(? IN NATURAL LANGUAGE MODE)` 直接取 BM25 分数并排序；`--export` 产出页面所需数据 |
 | 结果可见 | `web/index.html` | 预置查询的命中段落、分数、耗时全部来自上面的导出 |
 
-重建索引（需要 seekdb 运行时，首次会 `npm install` 拉 `@oceanbase/seekdb-node`）：
+重建索引（可选，需要 seekdb 运行时；只有这一步要联网装包）：
 
 ```bash
-npm install
+npm install @oceanbase/seekdb-node mysql2   # 可选依赖，不装也能跑主流程
 node src/ingest.mjs                 # 输出：写入 28 个切片 + 按主题统计
 node src/search.mjs "倒排索引 词项"   # 命令行检索，走 seekdb
 node src/search.mjs --export        # 重新导出 web/data/index.json
 ```
+
+没有装 seekdb 依赖时，`node src/search.mjs "倒排索引"` 自动降级为读 `web/data/index.json` 用同一套 BM25 复算，不会报错退出。
 
 实测（28 个切片、12 组查询、预热后）：单次检索 **0.6–1.6 ms**。
 

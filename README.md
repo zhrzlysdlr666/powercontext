@@ -29,19 +29,17 @@
 ### 30 秒验证
 
 ```bash
-# 仓库已在本机时（判题/评审场景），直接：
-python main.py                 # 自检：读索引复算 BM25 → 打印 SELFCHECK PASS，退出码 0，约 1 秒
-node main.mjs                  # 同一套检查的 node 版（环境里有 node 时）
-
-# 从零克隆时：
-git clone https://github.com/zhrzlysdlr666/powercontext.git && cd powercontext
-python main.py
+./run.sh                       # 自动挑 python3 / python / node，任一可用即可
+python main.py                 # 等价：自检，打印 SELFCHECK PASS，退出码 0，约 1 秒
+python3 main.py                # 环境里只有 python3 时用这条
+node main.mjs                  # node 版，同一套检查
 ```
 
-两者都不需要 `npm install`，也不依赖外网。要看页面：
+**不需要 `pip install`，也不需要 `npm install`**：主包零依赖（`requirements.txt` 只有注释，`package.json` 没有必装依赖），即使执行 `npm install` 也会在 1 秒内返回 `up to date`，离线环境同样成立。要看页面：
 
 ```bash
-python main.py --serve         # http://127.0.0.1:8899/
+./run.sh --serve               # http://127.0.0.1:8899/
+python main.py --serve         # 同上
 node main.mjs --serve          # 或 npm start，常驻 3000 端口
 ```
 
@@ -77,12 +75,14 @@ curl -s "localhost:3000/api/search?q=%E5%80%92%E6%8E%92%E7%B4%A2%E5%BC%95"
 
 ```bash
 cd qoder
-npm install
+npm install @oceanbase/seekdb-node mysql2   # 只有这一步需要联网；主流程不需要
 node src/ingest.mjs              # 切片 + 幂等导入（(doc, heading) 唯一键）
 node src/search.mjs "倒排索引 词项"  # 命令行检索，走 seekdb
 node src/search.mjs --export     # 重新导出 web/data/index.json
 node src/embed.mjs               # 把导出的数据内联回网页
 ```
+
+没有装 seekdb 依赖时，`node src/search.mjs "倒排索引"` 会自动降级：读已导出的 `web/data/index.json` 用同一套 BM25 参数复算，照样有结果可看，不会报错退出。
 
 ### 一键自检
 
