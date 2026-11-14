@@ -1,3 +1,15 @@
-
 # 本地对照实验站点（不属于提交材料）
 qoder-min/
+
+# 运行时生成：seekdb 数据目录、Python 缓存、虚拟环境
+qoder/data/
+data/seekdb/
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.log
+
+# 例外：站点静态快照是提交材料的一部分（由 seekdb 真实查询导出）
+!qoder/web/data/
+!qoder/web/data/**

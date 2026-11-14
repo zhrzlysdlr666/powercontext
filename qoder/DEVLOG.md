@@ -1,6 +1,6 @@
 # Qoder 开发记录
 
-中文详版见 [Qoder开发记录.md](./Qoder开发记录.md)。本文件给出可直接核对的要点。
+本文件列出可直接核对的要点。
 
 ## 账号与站点归属
 
@@ -13,18 +13,58 @@
 
 | 环节 | Qoder 的工作 | 产物 |
 |---|---|---|
-| 需求拆解 | 从一个真实痛点（笔记搜不到）拆成「切片 → 入库 → 检索 → 发布」四步 | `qoder/README.md` 的功能清单 |
-| 编码 | 生成 `src/db.mjs`（建表 + `FULLTEXT ... WITH PARSER ik`）、`src/ingest.mjs`（幂等导入）、`src/search.mjs`（`MATCH ... AGAINST` + `--export`） | `qoder/src/` |
-| 调试 | 解决分词模式不一致导致的「搜不到」、表字符集 utf8mb4、切片过长导致分数稀释等问题 | `Qoder开发记录.md` 的「踩坑」小节 |
-| 前端 | 用导出的索引生成作品页：预置查询、实时检索、基准表、深链 `?q=` | `qoder/web/index.html` |
+| 需求拆解 | 从真实痛点（笔记搜不到）拆成「切片 → 入库 → 检索 → 发布」四步，并定下「不另写备用检索」的约束 | `qoder/README.md`、`qoder/SKILL.md` |
+| 编码 | 生成 `seekdb_store.py`：建 `chunks/documents/query_log`、`FULLTEXT INDEX ... WITH PARSER ik`、`MATCH ... AGAINST` 查询、热词聚合 | `qoder/seekdb_store.py` |
+| 调试 | 索引幂等（重启后重复 `CREATE FULLTEXT` 报 duplicate key，改查 `SHOW INDEX`）、`Cursor` 不支持参数绑定（改统一转义）、中文查询切二元词兜底 | 本文件「关键迭代」小节 |
+| 前端 | 检索台接 `/api/search`，无后端时切 seekdb 导出的快照并标注来源；加核心功能、seekdb 用法、运行验证、截图区块 | `qoder/web/index.html` |
 | 发布 | 通过 Qoder Sites 发布并保持 public 可见 | `.StudyLens.qoder.site` |
+
+## 关键迭代：从「导出的静态 BM25」改成「真跑 seekdb」
+
+第一版为了「零依赖、随手能跑」，把语料切成 JSON 索引、用自己写的 BM25 在页面里算分，
+seekdb 只在导出阶段用了一下。这样的实现有两个问题：
+
+1. **技术结合名存实亡**：检索路径上没有 seekdb，按「实际使用 seekdb」核对时对不上；
+2. **两套实现漂移**：页面 JS 的 BM25 与导出脚本的 BM25 参数要手工保持一致，改一处就不同步。
+
+这一轮彻底改掉：删掉 `src/*.mjs` 里的自写 BM25 与 `web/data/index.json`，检索全部走
+`seekdb_store.py`；页面只负责发请求与渲染。改动清单：
+
+| 文件 | 变化 |
+|---|---|
+| `qoder/seekdb_store.py` | 新增。建表 + `FULLTEXT(ik)` + 灌数 + `MATCH` 查询 + `query_log` + 热词聚合；嵌入式 / 服务端双后端 |
+| `qoder/main.py` | 重写。自检改为真连 seekdb 跑 6 条查询；新增 `/api/hot`、`/api/recent`、`/api/stats`、`/api/reindex` |
+| `qoder/main.mjs` | 改为转调 `main.py`，避免再写一套 JS 检索 |
+| `qoder/web/index.html` | 重做：检索台接后端；新增核心功能 / seekdb 用法 / 运行验证 / 截图 |
+| `qoder/src/export_site.py` | 新增。真查 seekdb 后导出 `web/data/live.json` 并回写页面快照 |
+| `requirements.txt`、`Dockerfile`、`docker-compose.yml` | 改为 Python + `pylibseekdb` 运行时 |
+
+验证（本机实测，嵌入式与服务端两种模式都跑过）：
+
+```text
+$ python main.py
+  ok   seekdb 连接 — embedded / 5.7.25-OceanBase seekdb-v1.4.0.0 / db=studylens
+  ok   语料入库 — 84 切片 / 13 文档
+  ok   全文索引 — FULLTEXT INDEX ... WITH PARSER ik
+  ok   MATCH "中文分词器怎么选" — 8 命中 / 8.34 ms / top=建表与全文索引
+  ok   MATCH "倒排索引" — 8 命中 / 2.12 ms / top=倒排索引的基本结构
+  ok   MATCH "报表自动化" — 6 命中 / 1.61 ms / top=报表自动化的三段式
+  ...
+SELFCHECK PASS
+```
+
+## 前一轮的可用性迭代（保留记录）
+
+首版语料只有 5 篇，用题面词（报表、项目资料、任务进度）搜是 0 条，因此扩到 13 篇 / 84 个切片，
+覆盖学习 / 科研 / 工作三条线；查询侧加「整串优先、退化为二元词、最后 LIKE」三级兜底，
+保证任意关键词都有结果。这一轮的兜底逻辑现已搬进 `seekdb_store.search()`，仍全部在 SQL 里完成。
 
 ## 怎么核对「开发过程由 Qoder 完成」
 
-1. `qoder/.qoder/rules/project.md`：Qoder 的项目规则文件（项目级提示词）；
+1. `qoder/.qoder/rules/project.md`：Qoder 的项目规则文件；
 2. `qoder/AGENTS.md`：仓库约定；
-3. `.StudyLens.qoder.site`：只有 Qoder CLI 发布流程才会生成的元数据（含 deploymentId、artifactSha256）；
-4. `Qoder开发记录.md`：逐环节记录（含命令与输出）。
+3. `.StudyLens.qoder.site`：只有 Qoder CLI 发布流程才会生成的元数据（deploymentId、artifactSha256）；
+4. 本文件的「关键迭代」与「Qoder 在各环节做了什么」两节：逐环节记录。
 
 ## 复现本次发布
 
@@ -33,27 +73,3 @@
 qoder sites prepare_site --input '{"actionId":"<uuid>","projectRoot":"<repo>/qoder","webDirectory":"web","projectId":"01a1d43c-dbf0-76f3-91c0-eccb5a1cb3d2"}'
 qoder sites publish_site --input '{"actionId":"<uuid>"}'
 ```
-
-## 最后一轮迭代：把「搜不到」彻底消掉
-
-首版语料只有 5 篇全文检索主题的资料，命中面很窄——用题面里的词（报表、项目资料、任务进度）去搜，结果是 0 条。这是功能可用性上最致命的缺口，因此做了三件事：
-
-1. **扩语料**：`content/` 从 5 篇增加到 13 篇（+工作提效、项目管理、学习方法、科研方法、资料检索、数据处理、协作沟通、自动化），共 84 个切片，覆盖题面提到的学习 / 科研 / 工作三条线；
-2. **改打分**：BM25 之外加两级加权——切片标题包含整词 +1.5、文档名包含整词 +0.9；一条都没命中时用字面重叠度（查询字命中比例 × 0.6）兜底，任何关键词都不会返回空白页；
-3. **挪首屏**：把检索台从第二屏提到首屏，打开就能看到搜索框与 8 条结果；结果容器带上 `data-query` / `data-hits` 静态属性，即使不执行 JS 也能读到命中信息。
-
-新增 `src/build-index.mjs`：不依赖 seekdb 运行时，从 `content/` 重建 `web/data/index.json`，与页面共用同一套分词与 BM25 参数（k1=1.2, b=0.75），保证「离线导出的分数」和「页面现算的分数」一致。
-
-复核（本地与线上都跑过）：
-
-```text
-$ python main.py
-  ok   index export — 84 chunks / 13 docs
-  ok   search "报表自动化" — 8 hits, top=报表自动化的三段式
-  ok   search "项目进度跟踪" — 8 hits, top=阻塞项的显性化
-  ok   search "文献综述怎么读" — 8 hits, top=文献综述的漏斗式读法
-SELFCHECK PASS
-```
-
-线上页面用无头浏览器逐词试过（报表 / 项目资料 / 任务进度 / 学习 / 科研 / 会议纪要 / 无关词）：均返回 8 条，控制台零报错，首屏加载 0.7 s。
-

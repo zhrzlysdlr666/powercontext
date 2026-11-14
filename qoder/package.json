@@ -1,27 +1,25 @@
 {
   "name": "studylens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "StudyLens — seekdb 驱动的学习资料检索工作台（OceanBase 2026 大赛 Qoder 赛题）",
-  "main": "src/serve.mjs",
+  "main": "main.mjs",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "selfcheck": "node main.mjs",
+    "test": "node main.mjs",
     "smoke": "node main.mjs",
     "start": "node main.mjs --serve",
     "serve": "node main.mjs --serve",
     "dev": "node main.mjs --serve",
     "preview": "node main.mjs --serve",
-    "ingest": "node src/ingest.mjs",
-    "search": "node src/search.mjs",
-    "export": "node src/search.mjs --export"
+    "verify": "python verify.py",
+    "reindex": "python main.py --reindex",
+    "export:site": "python src/export_site.py"
   },
-  "optionalDependencies": {},
-  "comment_optional": "seekdb 依赖不在这里：主包保持零依赖，npm install 在离线环境也能立即成功。重建索引时再按 README 安装 @oceanbase/seekdb-node 与 mysql2。",
-  "bin": {
-    "studylens": "main.mjs"
-  }
+  "dependencies": {},
+  "comment_dependencies": "运行时依赖只有 seekdb 客户端（pylibseekdb + pymysql），用 pip install -r requirements.txt 安装。这里没有第三方检索库，npm install 也不需要跑：检索全部是项目自己写的 SQL，由 seekdb 执行。"
 }

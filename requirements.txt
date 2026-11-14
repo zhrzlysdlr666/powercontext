@@ -1,3 +1,12 @@
-# 仓库根：Qoder 赛题作品 StudyLens 的 Python 侧只用标准库，无第三方依赖。
-# 自检：python main.py（打印 SELFCHECK PASS，退出码 0）
-# 服务：python main.py --serve（http://127.0.0.1:8899/）
+# 仓库根：StudyLens 的运行时依赖（转发到 qoder/requirements.txt）
+#
+#   pip install -r requirements.txt
+#   python main.py          自检（真连 seekdb 跑 6 条查询，打印 SELFCHECK PASS）
+#   python main.py --serve  http://127.0.0.1:8899/
+#
+# 依赖只有 seekdb 客户端：pylibseekdb（嵌入式引擎）+ pymysql（MySQL 协议驱动）。
+# 没有 Web 框架、没有第三方检索库 —— 建表、全文索引、MATCH 查询都是项目自己写的 SQL。
+#
+# Python 推荐 3.12（该版本轮子自带 seekdb 引擎），Dockerfile 已固定 python:3.12-slim。
+pylibseekdb>=1.4.0
+pymysql>=1.1.1

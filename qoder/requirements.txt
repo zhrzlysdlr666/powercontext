@@ -1,2 +1,14 @@
-# StudyLens 不需要任何第三方 Python 包：自检与 HTTP 服务只用标准库。
-# （可选的重建索引走 node：见 README 第 5 节，需要 @oceanbase/seekdb-node。）
+# StudyLens 运行时依赖：只有 seekdb 客户端，没有 Web 框架、没有第三方检索库。
+#
+# 嵌入式引擎（默认）：检索与存储全部跑在 seekdb 上，不需要 Docker、不需要数据库服务进程。
+#   pip install -r requirements.txt
+#   python main.py --serve
+#
+# Python 版本：推荐 3.12。pylibseekdb 的 3.12 轮子自带 seekdb 引擎二进制，
+# 嵌入式实例开箱可用；3.13 的 abi3 轮子在本机实测初始化失败，
+# 这种情况下项目会自动探测本机 seekdb 服务端（SEEKDB_HOST/SEEKDB_PORT）并切过去。
+#
+# 服务端模式（可选）：设置 SEEKDB_HOST/SEEKDB_PORT 后走 MySQL 协议连 seekdb Server /
+# OceanBase，此时只需 pymysql，可以不装 pylibseekdb。
+pylibseekdb>=1.4.0
+pymysql>=1.1.1

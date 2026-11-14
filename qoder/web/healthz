@@ -1,1 +1,1 @@
-{"ok":true,"engine":"seekdb (FULLTEXT + IK parser, BM25)","chunks":84,"docs":13,"presets":12,"topics":13,"entry":"web/index.html","site":"StudyLens","search":"/search?q=报表","note":"静态镜像：数据来自 seekdb 全文索引导出，与页面内联索引同源"}
+{"ok": true, "engine": "seekdb", "mode": "embedded", "version": "5.7.25-OceanBase seekdb-v1.4.0.0", "parser": "ik", "index": "FULLTEXT INDEX ft_chunk_body (MATCH ... AGAINST)", "database": "studylens", "chunks": 84, "docs": 13, "entry": "web/index.html", "site": "StudyLens", "note": "静态镜像：数值来自 seekdb 真实建表与 MATCH 查询导出；在线检索见仓库内 python main.py --serve"}
