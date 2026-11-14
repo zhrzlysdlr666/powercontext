@@ -38,7 +38,7 @@ search 返回 8 条命中，第一条是「倒排索引的基本结构」，分�
 
 打开 https://studylens-lqny1ayu3yc.qoder.zone
 
-- 首屏默认展示预置查询「中文分词器怎么选」：4 条命中，耗时 0.761 ms（seekdb 实测）；
+- 首屏默认展示预置查询「中文分词器怎么选」：8 条命中，耗时 0.657 ms（seekdb 实测）；
 - 在搜索框输入「倒排索引」：立即出 8 条，带分数与耗时；回车或点「检索」等同效；
 - 也可直接用深链：`?q=倒排索引` 带参打开，页面加载即渲染结果；
 - 下方「预置查询基准」表格是 12 组查询的 seekdb 实测延迟。
@@ -47,7 +47,7 @@ search 返回 8 条命中，第一条是「倒排索引的基本结构」，分�
 
 ```bash
 cd qoder && npm install @oceanbase/seekdb-node mysql2
-node src/ingest.mjs                 # 重新写入 28 个切片（幂等）
+node src/ingest.mjs                 # 重新写入 84 个切片（幂等）
 node src/search.mjs "倒排索引 词项"   # 走 seekdb 的 MATCH ... AGAINST
 node src/search.mjs --export        # 重新导出 web/data/index.json
 ```

@@ -15,7 +15,7 @@ seekdb 的 `FULLTEXT ... WITH PARSER ik` 全文索引，检索结果通过 **Qod
 | 要求 | 落地位置 |
 |---|---|
 | 用 Qoder 开发 | 项目由 Qoder CLI 完成需求拆解、编码、调试与发布；`.qoder/rules/project.md` 是 Qoder 项目规则，`DEVLOG.md` 记录各环节做了什么，`.StudyLens.qoder.site` 是 Qoder Sites 的发布元数据（含 projectId / siteId / deploymentId / artifact 摘要） |
-| 实际使用 seekdb | `src/db.mjs` 打开嵌入式 seekdb 并建 `FULLTEXT INDEX ft_body (body) WITH PARSER ik`；`src/ingest.mjs` 按 `(doc, heading)` 幂等导入 28 个切片；`src/search.mjs` 用 `MATCH(body) AGAINST(? IN NATURAL LANGUAGE MODE)` 取 BM25 分数 |
+| 实际使用 seekdb | `src/db.mjs` 打开嵌入式 seekdb 并建 `FULLTEXT INDEX ft_body (body) WITH PARSER ik`；`src/ingest.mjs` 按 `(doc, heading)` 幂等导入 84 个切片；`src/search.mjs` 用 `MATCH(body) AGAINST(? IN NATURAL LANGUAGE MODE)` 取 BM25 分数 |
 | 通过 Qoder Sites 发布 | 线上站点 https://studylens-lqny1ayu3yc.qoder.zone （public，无痕窗口可直接打开） |
 
 ## 怎么跑（零依赖）

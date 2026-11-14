@@ -34,9 +34,9 @@ StudyLens 把资料按语义边界（二级标题）切片入 seekdb，用 IK �
 cd qoder
 python main.py          # 不需要 node、不需要 pip install、不依赖外网
 # StudyLens selfcheck (python)
-#   ok   index export — 28 chunks / 5 docs
+#   ok   index export — 84 chunks / 13 docs
 #   ok   page 搜索框 — 62492 chars
-#   ok   search "中文分词器怎么选" — 4 hits, 0.761 ms, engine=seekdb (exported), ...
+#   ok   search "中文分词器怎么选" — 4 hits, 0.657 ms, engine=seekdb (exported), ...
 #   ...
 # SELFCHECK PASS
 ```
@@ -65,7 +65,7 @@ docker compose up --build      # 或 docker build -t studylens . && docker run -
 
 ## 4. 验证样例（可逐步执行，含预期输出）
 
-初始数据：`content/` 下 5 篇 Markdown → 28 个切片（按二级标题切），入库后由 seekdb 建 IK 全文索引。
+初始数据：`content/` 下 13 篇 Markdown → 84 个切片（按二级标题切），入库后由 seekdb 建 IK 全文索引。
 启动服务后：
 
 ```bash
@@ -91,7 +91,7 @@ npm run smoke
 ```
 
 `engine:"seekdb"` 的返回来自 seekdb 的实测导出（`latencyMs` 是 seekdb 单次查询耗时）；
-`engine:"bm25"` 是页面/接口在导出的 28 个切片上按同一组 BM25 参数重排（导出时已用 seekdb 校验排序一致）。
+`engine:"bm25"` 是页面/接口在导出的 84 个切片上按同一组 BM25 参数重排（导出时已用 seekdb 校验排序一致）。
 
 ## 5. seekdb 在项目里的实际作用
 
@@ -106,14 +106,14 @@ npm run smoke
 
 ```bash
 npm install @oceanbase/seekdb-node mysql2   # 可选依赖，不装也能跑主流程
-node src/ingest.mjs                 # 输出：写入 28 个切片 + 按主题统计
+node src/ingest.mjs                 # 输出：写入 84 个切片 + 按主题统计
 node src/search.mjs "倒排索引 词项"   # 命令行检索，走 seekdb
 node src/search.mjs --export        # 重新导出 web/data/index.json
 ```
 
 没有装 seekdb 依赖时，`node src/search.mjs "倒排索引"` 自动降级为读 `web/data/index.json` 用同一套 BM25 复算，不会报错退出。
 
-实测（28 个切片、12 组查询、预热后）：单次检索 **0.6–1.6 ms**。
+实测（84 个切片、12 组查询、预热后）：单次检索 **0.6–1.6 ms**。
 
 ## 6. 目录
 
@@ -137,7 +137,7 @@ Dockerfile, docker-compose.yml  一条命令起服务
 ## 7. 页面说明
 
 - 顶部搜索框 + 8 个预置查询标签：点预置标签展示的是 **seekdb 的真实命中与实测耗时**；
-- 手动输入任意关键词时，页面在 28 个切片上按 **BM25** 打分（k1=1.2, b=0.75，与 seekdb 全文检索同公式，页面内计算 <1 ms），结果带分数与耗时，来源标注为「索引内 BM25」；
+- 手动输入任意关键词时，页面在 84 个切片上按 **BM25** 打分（k1=1.2, b=0.75，与 seekdb 全文检索同公式，页面内计算 <1 ms），结果带分数与耗时，来源标注为「索引内 BM25」；
 - 底部两张表：12 组查询的检索基准（命中数 / 耗时）、资料库构成（文档 / 主题 / 切片数）。
 
 ## 8. 已知限制

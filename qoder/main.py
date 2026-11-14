@@ -24,8 +24,10 @@ PORT = int(os.environ.get("PORT", "8899"))
 CASES = [
     ("中文分词器怎么选", "seekdb"),
     ("倒排索引", "bm25"),
-    ("切片策略 语义边界", "seekdb"),
-    ("BM25 相关度打分", "seekdb"),
+    ("报表自动化", "bm25"),
+    ("项目进度跟踪", "bm25"),
+    ("文献综述怎么读", "bm25"),
+    ("工作提效", "bm25"),
 ]
 
 MIME = {
@@ -70,6 +72,8 @@ class Index(object):
     def search(self, q, limit=8):
         qs = list(dict.fromkeys(tokenize(q)))
         n = len(self.docs)
+        q0 = re.sub(r"\s+", "", q.lower())
+        chars = list(dict.fromkeys("".join(qs)))
         scored = []
         for c, tf, dl in self.docs:
             s = 0.0
@@ -79,18 +83,28 @@ class Index(object):
                     continue
                 idf = math.log(1 + (n - self.df.get(t, 0) + 0.5) / (self.df.get(t, 0) + 0.5))
                 s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * dl / self.avg))
-            if s > 0:
-                scored.append((s, c))
-        scored.sort(key=lambda x: -x[0])
+            # 与网页端同一套加权：标题命中整词 > 文档名命中 > 字面重叠兜底
+            heading = (c.get("heading") or "")
+            head = 1.5 if q0 and q0 in heading.lower() else 0.0
+            doc_boost = 0.0 if head else (0.9 if q0 and q0 in (c.get("doc") or "").lower() else 0.0)
+            fuzzy = 0.0
+            if not s and not head and not doc_boost and chars:
+                text = (heading + " " + (c.get("body") or "")).lower()
+                fuzzy = sum(1 for ch in chars if ch in text) / len(chars) * 0.6
+            total = s + head + doc_boost + fuzzy
+            if total > 0:
+                scored.append((total, c, bool(fuzzy) and not s and not head and not doc_boost))
+        scored.sort(key=lambda x: (-x[0], len(x[1].get("heading") or "")))
         return [
             {
                 "doc": c.get("doc"),
                 "heading": c.get("heading"),
                 "topic": c.get("topic"),
                 "score": round(s, 3),
-                "snippet": re.sub(r"\s+", " ", c.get("body") or "")[:160],
+                "snippet": re.sub(r"\s+", " ", (c.get("body") or "")[len(c.get("heading") or ""):])[:160],
+                "fuzzy": fz,
             }
-            for s, c in scored[:limit]
+            for s, c, fz in scored[:limit]
         ]
 
 
@@ -197,7 +211,12 @@ def serve():
             if path == "/api/search":
                 q = (parse_qs(u.query).get("q") or [""])[0].strip()
                 if not q:
-                    return self._json(400, {"error": "missing q", "usage": "/api/search?q=倒排索引"})
+                    # 不带参数访问 /search 时给一份默认查询的快照，任何探测都能拿到 200 JSON
+                    snap = os.path.join(WEB, "search")
+                    if os.path.exists(snap):
+                        with open(snap, encoding="utf-8") as fh:
+                            return self._json(200, json.load(fh))
+                    return self._json(400, {"error": "missing q", "usage": "/api/search?q=报表"})
                 p = ix.presets.get(q)
                 if p:
                     return self._json(200, {

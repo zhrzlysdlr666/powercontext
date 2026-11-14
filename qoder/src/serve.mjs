@@ -67,6 +67,8 @@ async function load() {
 function search(q, limit = 8) {
   const qs = [...new Set(tokenize(q))];
   if (!qs.length) return [];
+  const q0 = String(q).toLowerCase().replace(/\s+/g, '');
+  const chars = [...new Set(qs.join(''))];
   const scored = [];
   for (const d of bm25.docs) {
     let s = 0;
@@ -77,9 +79,21 @@ function search(q, limit = 8) {
       const idf = Math.log(1 + (bm25.n - n + 0.5) / (n + 0.5));
       s += idf * ((f * (K1 + 1)) / (f + K1 * (1 - B + (B * d.len) / bm25.avg)));
     }
-    if (s > 0) scored.push({ chunk: d.c, score: s });
+    // 与网页端同一套加权：标题命中整词 > 文档名命中 > 字面重叠兜底
+    const heading = String(d.c.heading || '');
+    const head = q0 && heading.toLowerCase().includes(q0) ? 1.5 : 0;
+    const docBoost = head ? 0 : (q0 && String(d.c.doc || '').toLowerCase().includes(q0) ? 0.9 : 0);
+    let fuzzy = 0;
+    if (!s && !head && !docBoost) {
+      const text = (heading + ' ' + (d.c.body || '')).toLowerCase();
+      let hit = 0;
+      for (const ch of chars) if (text.includes(ch)) hit += 1;
+      fuzzy = (hit / chars.length) * 0.6;
+    }
+    const total = s + head + docBoost + fuzzy;
+    if (total > 0) scored.push({ chunk: d.c, score: total });
   }
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => b.score - a.score || String(a.chunk.heading || '').length - String(b.chunk.heading || '').length);
   return scored.slice(0, limit).map(({ chunk, score }) => ({
     doc: chunk.doc,
     heading: chunk.heading,

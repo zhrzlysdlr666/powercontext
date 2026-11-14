@@ -52,9 +52,11 @@ async function selfCheck() {
 
     const cases = [
       ['中文分词器怎么选', 'seekdb'],
-      ['倒排索引', 'bm25'],
-      ['切片策略 语义边界', 'seekdb'],
-      ['BM25 相关度打分', 'seekdb'],
+      ['报表自动化', 'seekdb'],
+      ['项目进度跟踪', 'seekdb'],
+      ['工作提效', 'seekdb'],
+      ['倒排索引 词项', 'seekdb'],
+      ['项目资料总丢失怎么办', 'bm25'],
     ];
     for (const [q, expectEngine] of cases) {
       const r = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`);

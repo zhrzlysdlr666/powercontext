@@ -63,10 +63,20 @@ for (const [name, inner] of Object.entries(blocks)) {
   out = out.replace(re, `$1${inner}\n    $2`);
 }
 
+// 首屏属性也写死，便于不执行 JS 的检查（爬虫、纯 HTTP 探测）直接读到命中信息
+out = out.replace(
+  /(<div class="results" id="results"[^>]*?)data-query="[^"]*"/,
+  `$1data-query="${esc(first.q)}"`
+);
+out = out.replace(
+  /(<div class="results" id="results"[^>]*?)data-hits="[^"]*"/,
+  `$1data-hits="${first.hits.length}"`
+);
+
 // The hint is part of the static copy: make it describe the default screen.
 out = out.replace(
   /(<div class="hint" id="hint">)[\s\S]*?(<\/div>)/,
-  `$1「${esc(first.q)}」是预置查询：命中与耗时均来自 seekdb 实测。在搜索框输入任意关键词，页面按 BM25 在 ${data.totalChunks} 个切片上重新排序。$2`
+  `$1「${esc(first.q)}」是预置查询：命中与耗时均来自索引实测。在搜索框输入任意关键词，页面按 BM25 在 ${data.totalChunks} 个切片上重新排序。$2`
 );
 
 writeFileSync(HTML, out, 'utf8');

@@ -1,1 +1,1 @@
-{"ok":true,"engine":"seekdb (FULLTEXT + IK parser, BM25)","chunks":28,"docs":5,"presets":12,"entry":"web/index.html","site":"StudyLens","search":"/search?q=倒排索引","note":"静态镜像：数据来自 seekdb 导出"}
+{"ok":true,"engine":"seekdb (FULLTEXT + IK parser, BM25)","chunks":84,"docs":13,"presets":12,"topics":13,"entry":"web/index.html","site":"StudyLens","search":"/search?q=报表","note":"静态镜像：数据来自 seekdb 全文索引导出，与页面内联索引同源"}
