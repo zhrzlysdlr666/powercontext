@@ -4,7 +4,7 @@
  "engine": "seekdb",
  "source": "seekdb-export",
  "total": 8,
- "latencyMs": 115.063,
+ "latencyMs": 144.142,
  "hits": [
   {
    "id": "02-seekdb-quickstart-02",

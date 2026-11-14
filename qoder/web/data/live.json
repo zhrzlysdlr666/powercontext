@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-14T15:51:14+0800",
+ "generatedAt": "2026-11-14T16:39:17+0800",
  "engine": "seekdb",
  "mode": "embedded",
  "version": "5.7.25-OceanBase seekdb-v1.4.0.0",
@@ -7,7 +7,7 @@
  "stats": {
   "chunks": 84,
   "docs": 13,
-  "queries": 7,
+  "queries": 6,
   "version": "5.7.25-OceanBase seekdb-v1.4.0.0"
  },
  "presets": {
@@ -18,7 +18,7 @@
    "stage": "match",
    "expr": "中文分词器怎么选",
    "parser": "ik",
-   "latencyMs": 115.063,
+   "latencyMs": 144.142,
    "total": 8,
    "hits": [
     {
@@ -102,7 +102,7 @@
    "stage": "match",
    "expr": "倒排索引",
    "parser": "ik",
-   "latencyMs": 1.113,
+   "latencyMs": 1.402,
    "total": 8,
    "hits": [
     {
@@ -186,7 +186,7 @@
    "stage": "match",
    "expr": "报表自动化",
    "parser": "ik",
-   "latencyMs": 0.93,
+   "latencyMs": 1.063,
    "total": 6,
    "hits": [
     {
@@ -252,7 +252,7 @@
    "stage": "match",
    "expr": "项目进度跟踪",
    "parser": "ik",
-   "latencyMs": 7.655,
+   "latencyMs": 9.829,
    "total": 8,
    "hits": [
     {
@@ -336,7 +336,7 @@
    "stage": "match",
    "expr": "文献综述怎么读",
    "parser": "ik",
-   "latencyMs": 1.052,
+   "latencyMs": 1.427,
    "total": 4,
    "hits": [
     {
@@ -384,7 +384,7 @@
    "stage": "match",
    "expr": "工作提效",
    "parser": "ik",
-   "latencyMs": 0.913,
+   "latencyMs": 1.152,
    "total": 4,
    "hits": [
     {
@@ -428,10 +428,6 @@
  },
  "hot": [
   {
-   "q": "倒排索引",
-   "count": 2
-  },
-  {
    "q": "工作提效",
    "count": 1
   },
@@ -445,6 +441,10 @@
   },
   {
    "q": "报表自动化",
+   "count": 1
+  },
+  {
+   "q": "倒排索引",
    "count": 1
   },
   {
