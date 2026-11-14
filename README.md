@@ -38,7 +38,7 @@ node main.mjs                  # node 版，同一套检查
 **不需要 `pip install`，也不需要 `npm install`**：主包零依赖（`requirements.txt` 只有注释，`package.json` 没有必装依赖），即使执行 `npm install` 也会在 1 秒内返回 `up to date`，离线环境同样成立。要看页面：
 
 ```bash
-./run.sh --serve               # http://127.0.0.1:8899/
+./run.sh --serve               # http://127.0.0.1:8899/（同时监听 3000，便于按约定端口探测）
 python main.py --serve         # 同上
 node main.mjs --serve          # 或 npm start，常驻 3000 端口
 ```

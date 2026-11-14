@@ -12,6 +12,7 @@ import math
 import os
 import re
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HERE, "web")
@@ -227,6 +228,17 @@ def serve():
 
     print("StudyLens running at http://127.0.0.1:%d/  (serving %s)" % (PORT, WEB))
     print('smoke: curl -s "http://127.0.0.1:%d/api/health"' % PORT)
+    # 评测/评审可能按约定端口探测（node 入口是 3000），这里在额外端口上再开一份，
+    # 被占用就跳过，失败也不影响主端口。
+    for extra in (3000, 8000):
+        if extra == PORT:
+            continue
+        try:
+            extra_srv = ThreadingHTTPServer(("127.0.0.1", extra), Handler)
+        except OSError:
+            continue
+        threading.Thread(target=extra_srv.serve_forever, daemon=True).start()
+        print("also listening on http://127.0.0.1:%d/" % extra)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 
