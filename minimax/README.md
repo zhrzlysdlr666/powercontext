@@ -8,9 +8,23 @@
 
 ## 1. 运行
 
+### 1.0 环境与依赖版本
+
+| 依赖 | 版本 | 说明 |
+|---|---|---|
+| Node.js | **≥ 22**（实测 22.22.2） | `@oceanbase/seekdb-node` 的 `engines` 要求 |
+| Python | ≥ 3.10（实测 3.13.14） | 跑 `pytest`；Linux/macOS 的 `python3` 同义 |
+| `@oceanbase/seekdb-node` | 1.4.0 | 随 `npm install` 装，`optionalDependencies` 会按平台取 linux-x64 / linux-arm64 / darwin-arm64 / win32-x64 二进制 |
+| `mysql2` | 3.11.x | seekdb 走 MySQL 协议 |
+| `pytest` | 8.x 或 9.x（`requirements.txt` 写 `>=8,<9`） | 测试运行器 |
+| PowerContext | 1.5.1 | `pip install "powercontext[server,builtin,cli]"`，只有 `apply` / `state` / `dev` 需要 |
+
+Linux x86_64 干净环境按下面四条即可跑通；`data/` 是运行时目录（已 gitignore），首次 `import` 会自动拉起嵌入式 seekdb 并建表。
+
 ```bash
 npm install                                   # @oceanbase/seekdb-node + mysql2
 python -m pip install -r requirements.txt     # pytest；PowerContext 见第 5 节
+
 
 # ① 把 sample/ 下的规格、代码、测试导入 seekdb（首次会自动拉起本地 seekdb 并建表）
 node src/cli.mjs import
@@ -83,8 +97,8 @@ node src/cli.mjs apply evidence/minimax-response-T-1042.md \
 
 | 技术 | 在本项目里实际承担的作用 |
 |---|---|
-| **MiniMax**（`MiniMax-M3.1-Flash`，Anthropic 兼容通道 `api.minimaxi.com/anthropic`） | 拿到上下文后生成 `app/tickets.py` 的完整修改；每次调用的请求 id / token 用量 / 时延都记入 `evidence/minimax-calls.jsonl`，与提交的代码差异一一对应 |
-| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 26 个切块；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
+| **MiniMax**（`MiniMax-M3.1-Flash`，Anthropic 兼容通道 `api.minimaxi.com/anthropic`） | 拿到上下文后生成 `app/tickets.py` 的完整修改；本次实际走网页 Agent 通道，会话链接、回复 sha256、应用文件与前后测试退出码记入 `evidence/minimax-agent-calls.jsonl`，与提交的代码差异一一对应（直连 API 通道会记 `minimax-calls.jsonl`，本次未使用） |
+| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 30 个切块（spec 13 / test 9 / task 4 / code 4）；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
 | **PowerContext**（HTTP API，`127.0.0.1:8787`） | 用 `POST /v1/scopes` 建独立 scope，`POST /v1/memory/remember` 写任务状态（completed / todo / verification），`POST /v1/memory/entries/list` 读回；重启模块后 `state` 命令仍能取到上一次的进展 |
 
 ## 4. 验证样例（可直接复现）
@@ -102,43 +116,55 @@ sample/
   tests/test_tickets_task.py 目标测试（修改前失败、修改后通过）
 ```
 
-复现步骤（与提交记录一致，走通道 B）：
+复现步骤（与提交记录一致，走通道 B）。
+
+> **仓库当前状态是"修改后"**：`sample/app/tickets.py` 已应用 MiniMax 给出的补丁，所以从干净 checkout 直接跑目标测试是 `5 passed`。
+> 要复现"修改前因目标行为未实现而失败"，必须先按第 1 步把基线恢复回来——`evidence/before-tickets.py` 就是提交时一并保存的修改前快照。
 
 ```bash
-python -m pytest sample/tests/test_tickets_task.py -q   # 修改前：4 failed, 1 passed（exit=1）
-python -m pytest sample/tests/test_tickets.py -q        # 修改前：4 passed（exit=0）
+# 1) 修改前：恢复基线 → 目标测试 4 failed, 1 passed（exit=1）；回归 4 passed（exit=0）
+cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.py.orig
+python -m pytest sample/tests/test_tickets_task.py -q
+python -m pytest sample/tests/test_tickets.py -q
 
-node src/cli.mjs import                                 # 资料入 seekdb
-node src/cli.mjs prompt                                 # 用检索结果拼提示词
-# 粘贴到 MiniMax Agent，回复存为 evidence/minimax-response-T-1042.md
+# 2) 资料入 seekdb → 组装上下文 → 拼提示词
+node src/cli.mjs import
+node src/cli.mjs prompt                                 # → evidence/prompt-T-1042.md
+
+# 3) 把 prompt 整段贴进 MiniMax Agent，回复另存为 evidence/minimax-response-T-1042.md，再：
 node src/cli.mjs apply evidence/minimax-response-T-1042.md \
   --provider="MiniMax Code 网页端 (agent.minimax.cn)" \
   --model="MiniMax-M3.1-Flash" --session="<会话链接>"
-# apply 会先恢复修改前快照跑一次，再应用后重跑：修改后目标测试 5 passed、回归 4 passed
+# apply 会先恢复修改前快照（.orig → evidence/before-tickets.py 依次回落）跑一次 before，
+# 应用回复后再跑 after：修改后目标 5 passed（exit=0）、回归 4 passed（exit=0）
 
-node src/cli.mjs state                                  # 读回 PowerContext 里的进展与验证结果
+# 4) 读回 PowerContext 里的进展与验证结果
+node src/cli.mjs state
 ```
+
+`apply` 的报告里带 `baseline_source` 字段（`orig` / `evidence` / `working-tree`），可以直接确认 before 那一轮量的是不是真正的修改前代码。
+
 
 上下文里必须出现的来源（可对照 `evidence/context-T-1042.json` 核对）：
 
 | 类型 | 来源 | 命中示例 |
 |---|---|---|
-| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.32 / 5.11 / 4.63 |
-| 代码 | `app/tickets.py` 的 `list_tickets` | 3.42 |
-| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 5.60 / 4.30 / 3.74 |
+| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.60 / 5.72 / 5.00 |
+| 代码 | `app/tickets.py` 的 `list_tickets` | 3.94 |
+| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 6.10 / 4.63 / 4.39 |
 
 规格更新后是否跟着变，见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 输出里出现新文本 → 还原后消失）。
 
-重置方法：修改前的 `app/tickets.py` 已随仓库保存为 `evidence/before-tickets.py`，恢复基线后重跑即可：
+重置方法：修改前的 `app/tickets.py` 已随仓库保存为 `evidence/before-tickets.py`，恢复基线后重跑即可（以下命令在 `minimax/` 目录执行）：
 
 ```bash
 cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.py.orig
-git checkout -- sample/specs
+git -C .. checkout -- minimax/sample/specs   # 若规格被改过，一并还原
 node src/cli.mjs import
 ```
 
-（`apply` 会在第一次运行时把当前文件另存为 `sample/app/tickets.py.orig` 作为"修改前快照"，
-之后无论重跑几次，"修改前测试"量的都是同一个基线；因此要重现"4 failed"，请先从上面的基线文件恢复。）
+`apply` 恢复基线的顺序是 `sample/app/tickets.py.orig` → `evidence/before-tickets.py`，因此干净 checkout
+（没有 `.orig`）也能量到真正的"修改前"；报告里的 `baseline_source` 会写明实际用了哪一个。
 
 ## 5. PowerContext 服务
 

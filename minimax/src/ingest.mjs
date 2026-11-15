@@ -53,12 +53,17 @@ export async function ingestSample(sampleDir) {
   ];
 
   let written = 0;
+  const seen = new Set();
   for (const job of jobs) {
     if (!fs.existsSync(job.dir)) continue;
     for (const file of fs.readdirSync(job.dir).sort()) {
       const full = path.join(job.dir, file);
       if (!fs.statSync(full).isFile()) continue;
+      // apply 会在目标文件旁生成 <file>.orig（修改前快照），它不是工程资料，
+      // 混进索引会让"相关代码"同时命中两个版本的同一函数，这里直接跳过。
+      if (file.startsWith(".") || /\.(orig|bak|tmp|swp)$/i.test(file)) continue;
       const rel = path.relative(sampleDir, full).replace(/\\/g, "/");
+      seen.add(rel);
       const raw = fs.readFileSync(full, "utf8");
       const base = file.replace(/\.[^.]+$/, "");
       let index = 0;
@@ -79,8 +84,15 @@ export async function ingestSample(sampleDir) {
       }
     }
   }
+  // 清理：库里存在、但本次扫描不到的文档（删掉的规格、apply 生成的 .orig 快照等），
+  // 否则检索会把已经不存在的来源当成命中返回。
+  const [existing] = await db.query("SELECT DISTINCT path FROM ctx_docs");
+  const stale = existing.map((r) => r.path).filter((p) => !seen.has(p));
+  if (stale.length) {
+    await db.query("DELETE FROM ctx_docs WHERE path IN (?)", [stale]);
+  }
   const [rows] = await db.query(
     "SELECT kind, COUNT(*) AS n FROM ctx_docs GROUP BY kind ORDER BY kind",
   );
-  return { written, stats: rows };
+  return { written, removed: stale.length, stats: rows };
 }

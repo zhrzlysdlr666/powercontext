@@ -5,11 +5,14 @@
   "type": "module",
   "description": "SDD engineering context module: seekdb-backed retrieval + MiniMax code change + PowerContext task state",
   "scripts": {
-    "db": "node tools/start-seekdb.mjs",
     "import": "node src/cli.mjs import",
     "context": "node src/cli.mjs context",
+    "prompt": "node src/cli.mjs prompt",
     "dev": "node src/cli.mjs dev",
     "state": "node src/cli.mjs state"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "dependencies": {
     "@oceanbase/seekdb-node": "^1.4.0",

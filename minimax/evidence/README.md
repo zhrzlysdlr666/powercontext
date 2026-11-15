@@ -25,9 +25,9 @@
 `node src/cli.mjs import` 把 `sample/` 下的规格、代码、测试写入 seekdb（嵌入式 `@oceanbase/seekdb-node`），建立 ik 全文索引；
 `node src/cli.mjs context` / `prompt` 用 `MATCH ... AGAINST` 检索后组装上下文。
 
-- 入库统计：`spec 12 / test 9 / task 4 / code 1`，共 26 个切片
+- 入库统计：`spec 13 / test 9 / task 4 / code 4`，共 30 个切片（`apply` 生成的 `.orig` 快照会被跳过并在下次 `import` 时清理，不参与检索）
 - 检索结果：`evidence/context-T-1042.json`（含每条命中的 path / symbol / score / snippet）
-- 命中示例：`SPEC-pagination#p0` 6.32、`SPEC-filtering#p0` 5.11、`test_tag_filter_combines_with_status` 5.60、`test_filter_by_tag` 4.30、`test_page_zero_normalized_to_first_page` 3.74、`app/tickets.py:list_tickets` 3.42
+- 命中示例：`SPEC-pagination#p0` 6.5979、`SPEC-filtering#p0` 5.7228、`test_tag_filter_combines_with_status` 6.0979、`test_filter_by_tag` 4.6330、`test_page_zero_normalized_to_first_page` 4.3851、`app/tickets.py:list_tickets` 3.9438
 - 规格更新后是否跟着变：见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 出现新文本 → 还原后消失）
 
 ## 3. 验证结果（修改前 / 修改后）
@@ -35,13 +35,19 @@
 `node src/cli.mjs apply evidence/minimax-response-T-1042.md` 会先把 `sample/app/tickets.py` 恢复成修改前快照，
 跑一次目标测试与回归测试，再应用模型改动、重跑同样的两组测试，因此「前失败 / 后通过」可重复核对。
 
+基线按 `sample/app/tickets.py.orig` → 本目录的 `before-tickets.py` 依次回落，报告里的 `baseline_source`
+会写明这一轮用的是哪一个（干净 checkout 上应为 `evidence`），因此 before 那一轮量的确实是修改前代码。
+
 | 阶段 | 目标测试 `tests/test_tickets_task.py` | 回归测试 `tests/test_tickets.py` |
 |---|---|---|
 | 修改前 | `exit=1`，`4 failed, 1 passed` | `exit=0`，`4 passed` |
 | 修改后 | `exit=0`，`5 passed` | `exit=0`，`4 passed` |
 
-原始 pytest 尾部输出见 `run-T-1042.json`（`before` / `after` 字段）以及本目录父级 PowerContext 状态快照
-（`node src/cli.mjs state` 可读回，服务端重启后仍可读，见第 5 节）。
+原始 pytest 尾部输出见 `run-T-1042.json` 的 `before` / `after`（退出码）与 `before_detail` / `after_detail`
+（pytest 尾部原文）；PowerContext 侧的状态读回见 `state-T-1042.json`（`node src/cli.mjs state` 的原始输出，
+包含 completed / todo / verification 三段）。`after-tickets.py` 是修改后文件的快照，配合 `before-tickets.py`
+可以直接逐行对比，不需要先跑一遍流程。
+
 
 ## 4. 代码差异
 
@@ -55,9 +61,9 @@
 | 项 | 值 |
 |---|---|
 | Scope | `scp_4ryw6s7cf2rnk9jxx4ermqabha`（标题：SDD 上下文模块 T-1042） |
-| Artifact | `atomic-memory / art_d9c1bb2f0c4b4a4496c170800149cb73`（rev 1） |
-| 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification |
-| 重启后读回 | 已验证：服务端进程重启后再次 `state`，仍返回同一条记录（`previous_state_found: true`） |
+| Artifact | `atomic-memory / art_e301fe6fff6f43ee87ba6926a31c34b6`（rev 1） |
+| 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification（原文见 `state-T-1042.json`） |
+| 重启后读回 | 已验证：服务端进程重启后再次 `state`，仍返回同一条记录（`run-T-1042.json` 的 `previous_state_found: true`） |
 
 ## 6. 复现命令
 
@@ -77,8 +83,9 @@ node src/cli.mjs apply evidence/minimax-response-T-1042.md \
 node src/cli.mjs state                        # 读回 PowerContext 中的任务状态
 ```
 
-`apply` 先把 `app/tickets.py` 恢复成 `.orig` 快照（首次运行时自动生成），所以「4 failed → 5 passed」
-的对照每次重跑都一致；不先恢复基线文件的话，`.orig` 会退化成"已是修改后"的版本。
+`apply` 恢复基线的顺序是 `sample/app/tickets.py.orig` → 本目录 `before-tickets.py`，所以即使从干净
+checkout（没有 `.orig`）直接跑 apply，before 那一轮量的仍是修改前代码；报告里的 `baseline_source`
+会写明实际用了哪一个。只有两者都不存在时才会退化成"把当前文件当基线"，并打印 `[warn]` 提示。
 
 `apply` 与 `state` 需要 `POWECONTEXT_URL` 指向已启动的 PowerContext Server（默认 `http://127.0.0.1:8787`）；
 `import` / `context` / `prompt` 只需要 `npm install` 装好的嵌入式 seekdb。

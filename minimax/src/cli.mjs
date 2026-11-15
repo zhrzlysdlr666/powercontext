@@ -44,10 +44,12 @@ async function sourcesFromContext() {
 
 async function main() {
   if (cmd === "import") {
+    dbTouched = true;
     const { ingestSample } = await load("ingest");
     const out = await ingestSample(SAMPLE);
     console.log(JSON.stringify(out, null, 2));
   } else if (cmd === "context") {
+    dbTouched = true;
     const { buildContext } = await load("context");
     const ctx = await buildContext(taskText(), "T-1042");
     console.log(JSON.stringify(ctx, null, 2));
@@ -101,12 +103,15 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (dbTouched) {
-      try {
-        const { closeDb } = await load("db");
-        await closeDb();
-      } catch {
-        /* 没开过库时忽略 */
-      }
+    if (!dbTouched) return; // 没碰 seekdb 的命令（apply / state / help）自然退出即可
+    try {
+      const { closeDb } = await load("db");
+      // seekdb 的本地句柄在部分平台 close() 会挂住；给 2 秒宽限，之后不再等
+      await Promise.race([closeDb(), new Promise((r) => setTimeout(r, 2000))]);
+    } catch {
+      /* 没开过库时忽略 */
     }
+    // 工作已经完成（结果已 console.log），不能让一个挂住的句柄拖住进程退出
+    await new Promise((r) => setImmediate(r));
+    process.exit(process.exitCode || 0);
   });

@@ -1,0 +1,75 @@
+{
+  "task": {
+    "id": "T-1042",
+    "text": "# 任务 T-1042：工单列表增加标签筛选并修正分页边界\n\n## 背景\n\n客服后台的工单列表当前只能按状态和优先级筛选。运营希望按标签（例如 perf、auth、export）快速圈出一批工单，用于批量处理性能类问题。\n\n同时前端反馈：页码或页长传入非法值时，列表会出现\"空页\"或一次性返回全部数据，体验很差。\n\n## 要改什么\n\n1. `list_tickets` 增加 `tag` 参数，按标签筛选，并且可以和 status / priority 叠加（AND 关系）。\n2. 分页参数按 SPEC-PAGINATION 做归一化：\n   - `page < 1` 按 1 处理，返回值里的 `page` 是归一化后的值；\n   - `page_size > 100` 按 100 处理，`page_size < 1` 按 20 处理；\n   - 页码越界返回空 `items`，`total` 仍是筛选后的总数。\n\n## 哪些原有行为必须保持\n\n- 不传任何筛选参数时，返回第一页（默认 page=1 / page_size=20），`total` 等于全部工单数。\n- 只按 status 或 priority 筛选的行为与现在一致，顺序保持入参顺序。\n- 返回结构仍然是 `{items, page, page_size, total}` 四个键。\n- 现有回归测试 `sample/tests/test_tickets.py` 必须全部通过。\n\n## 验收\n\n- 目标测试 `sample/tests/test_tickets_task.py` 在修改前失败、修改后全部通过。\n- 回归测试 `sample/tests/test_tickets.py` 修改前后都通过。\n"
+  },
+  "specs": [
+    {
+      "path": "specs/SPEC-pagination.md",
+      "title": "SPEC-PAGINATION 分页规格 · 1. 输入参数",
+      "symbol": "#p0",
+      "score": 6.5979,
+      "snippet": "SPEC-PAGINATION 分页规格 · 1. 输入参数\n## 1. 输入参数\n| 参数 | 类型 | 默认值 | 约束 |\n|---|---|---|---|\n| page | int | 1 | 页码从 1 开始；小于 1 时按 1 处理 |\n| page_size | int | 20 | 每页条数；大于 100 时按 100 处理；小于 1 时按 20 处理 |"
+    },
+    {
+      "path": "specs/SPEC-filtering.md",
+      "title": "SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度",
+      "symbol": "#p0",
+      "score": 5.7228,
+      "snippet": "SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度\n## 1. 支持的筛选维度\n| 维度 | 参数 | 匹配方式 | 说明 |\n|---|---|---|---|\n| 状态 | `status` | 精确匹配 | open / closed |\n| 优先级 | `priority` | 精确匹配 | P0 / P1 / P2 |\n| 标签 | `tag` | 成员匹配 | 工单 `tags` 数组包含该标签即命中 |"
+    },
+    {
+      "path": "specs/SPEC-filtering.md",
+      "title": "SPEC-FILTERING 列表筛选规格 · 2. 组合规则",
+      "symbol": "#p1",
+      "score": 5.0045,
+      "snippet": "SPEC-FILTERING 列表筛选规格 · 2. 组合规则\n## 2. 组合规则\n- 多个筛选维度之间是 **AND** 关系：工单必须同时满足全部条件。\n- 参数为 `None` 表示不启用该维度，不能把 `None` 当成筛选值。\n- 标签筛选必须容忍工单没有 `tags` 字段（视为空数组），不能抛异常。"
+    }
+  ],
+  "code": [
+    {
+      "path": "app/tickets.py",
+      "title": "list_tickets",
+      "symbol": "list_tickets",
+      "score": 3.9438,
+      "snippet": "list_tickets\ndef list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):\n    \"\"\"按状态/优先级/标签筛选工单并分页返回。\n    tickets: list[dict]，每项含 id / title / status / priority / tags\n    返回 dict：{items, page, page_size, total}\n    \"\"\"\n    items = list(tickets)\n    if status is not None:\n        items = [t for t in items if t.get(\"status\") == status]\n    if priority is not None:\n        items = [t for t in items if t.get(\"priority\") == priority]\n    if tag is not None:\n        items = [t for t in items if _has_tag(t, tag)]\n    page = _normalize_page(page)\n    page_size = _normalize_page_size(page_size)\n    total = len(items)\n    start = (page - 1) * page_size\n    end = start + page…"
+    },
+    {
+      "path": "app/tickets.py",
+      "title": "_normalize_page_size",
+      "symbol": "_normalize_page_size",
+      "score": 1.4943,
+      "snippet": "_normalize_page_size\ndef _normalize_page_size(page_size):\n    \"\"\"SPEC-PAGINATION：page_size 上限 100，下限 1，非法值回落到默认值 20。\"\"\"\n    try:\n        value = int(page_size)\n    except (TypeError, ValueError):\n        return DEFAULT_PAGE_SIZE\n    if value > MAX_PAGE_SIZE:\n        return MAX_PAGE_SIZE\n    if value < 1:\n        return DEFAULT_PAGE_SIZE\n    return value"
+    },
+    {
+      "path": "app/tickets.py",
+      "title": "_has_tag",
+      "symbol": "_has_tag",
+      "score": 2.0815,
+      "snippet": "_has_tag\ndef _has_tag(ticket, tag):\n    \"\"\"SPEC-FILTERING：标签按成员匹配，工单缺少 tags 字段时视为空数组。\"\"\"\n    tags = ticket.get(\"tags\")\n    if not isinstance(tags, (list, tuple, set, frozenset)):\n        return False\n    return tag in tags"
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/test_tickets_task.py",
+      "title": "test_tag_filter_combines_with_status",
+      "symbol": "test_tag_filter_combines_with_status",
+      "score": 6.0979,
+      "snippet": "test_tag_filter_combines_with_status\ndef test_tag_filter_combines_with_status():\n    \"\"\"标签筛选可与状态筛选叠加。\"\"\"\n    out = list_tickets(TICKETS, status=\"open\", tag=\"perf\")\n    assert [t[\"id\"] for t in out[\"items\"]] == [2, 4]"
+    },
+    {
+      "path": "tests/test_tickets_task.py",
+      "title": "test_filter_by_tag",
+      "symbol": "test_filter_by_tag",
+      "score": 4.633,
+      "snippet": "test_filter_by_tag\ndef test_filter_by_tag():\n    \"\"\"新增：按标签筛选，只返回 tags 中包含该标签的工单。\"\"\"\n    out = list_tickets(TICKETS, tag=\"perf\")\n    assert [t[\"id\"] for t in out[\"items\"]] == [2, 4]"
+    },
+    {
+      "path": "tests/test_tickets_task.py",
+      "title": "test_page_zero_normalized_to_first_page",
+      "symbol": "test_page_zero_normalized_to_first_page",
+      "score": 4.3851,
+      "snippet": "test_page_zero_normalized_to_first_page\ndef test_page_zero_normalized_to_first_page():\n    \"\"\"边界输入：page=0 视为第 1 页，返回首页数据而不是空列表。\"\"\"\n    out = list_tickets(TICKETS, page=0, page_size=2)\n    assert out[\"page\"] == 1\n    assert [t[\"id\"] for t in out[\"items\"]] == [1, 2]"
+    }
+  ]
+}

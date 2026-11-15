@@ -45,9 +45,30 @@ function sha256(s) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
-function gitDiff(relPath) {
+function gitDiff(relPath, baselineAbs) {
   const r = spawnSync("git", ["diff", "--", relPath], { cwd: ROOT, encoding: "utf8" });
-  return r.status === 0 ? r.stdout || "" : "";
+  if (r.status === 0 && (r.stdout || "").trim()) return r.stdout;
+  // 修改已经随提交进入 HEAD 时，工作区与 HEAD 相同，`git diff` 为空；
+  // 这时直接用「修改前快照 → 应用后文件」生成无索引 diff，保证补丁永远可核对。
+  if (baselineAbs && fs.existsSync(baselineAbs)) {
+    const r2 = spawnSync(
+      "git",
+      ["diff", "--no-index", "--", baselineAbs, path.resolve(ROOT, relPath)],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    // 把绝对路径改写成仓库内相对路径，评审可以把这段补丁直接 `git apply` 到修改前文件
+    const rel = `minimax/${relPath.replace(/\\/g, "/")}`;
+    const lines = (r2.stdout || "").split("\n");
+    for (let i = 0; i < Math.min(lines.length, 6); i++) {
+      if (lines[i].startsWith("diff --git ")) lines[i] = `diff --git a/${rel} b/${rel}`;
+      else if (lines[i].startsWith("--- ")) lines[i] = `--- a/${rel}`;
+      else if (lines[i].startsWith("+++ ")) lines[i] = `+++ b/${rel}`;
+      else if (lines[i].startsWith("index ")) continue;
+      else break;
+    }
+    return lines.join("\n");
+  }
+  return "";
 }
 
 /**
@@ -79,18 +100,41 @@ export async function applyResponse({
   const startedAt = new Date().toISOString();
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
 
-  // ① 恢复修改前快照：有 .orig 就从它恢复，没有就现场备份当前文件。
-  //    这样无论重跑几次，"修改前测试"量的都是同一个基线。
+  // ① 恢复修改前快照。基线来源按优先级：
+  //    a) 上一次运行留下的 <file>.orig；
+  //    b) 仓库随证据一起保存的 evidence/before-<basename>（评审从干净 checkout 开始时走这条）；
+  //    c) 都没有，才把当前文件当基线（会在报告里标 baseline_source=working-tree，提醒不可信）。
+  //    这样无论重跑几次、无论有没有 .orig，"修改前测试"量的都是同一个基线。
   const backups = [];
+  const baselineSources = [];
   for (const f of files) {
     const abs = safeTarget(f.path);
     const bak = `${abs}.orig`;
+    const shipped = path.join(EVIDENCE_DIR, `before-${path.basename(abs)}`);
+    let source;
     if (fs.existsSync(bak)) {
       fs.copyFileSync(bak, abs);
+      source = "orig";
+    } else if (fs.existsSync(shipped)) {
+      fs.copyFileSync(shipped, abs);
+      fs.copyFileSync(shipped, bak); // 归一化成 .orig，下次直接命中
+      source = "evidence";
     } else if (fs.existsSync(abs)) {
       fs.copyFileSync(abs, bak);
+      source = "working-tree";
+    } else {
+      source = "missing";
     }
-    backups.push({ rel: f.path, abs, bak });
+    backups.push({ rel: f.path, abs, bak, source });
+    baselineSources.push({ path: f.path, source });
+  }
+  if (baselineSources.some((b) => b.source !== "orig" && b.source !== "evidence")) {
+    console.warn(
+      `[warn] 没有找到修改前快照，已把当前工作区文件当作基线：${baselineSources
+        .filter((b) => b.source !== "orig" && b.source !== "evidence")
+        .map((b) => b.path)
+        .join(", ")}；该次 before 结果不可作为"修改前失败"的证据。`,
+    );
   }
 
   const before = {
@@ -112,7 +156,7 @@ export async function applyResponse({
   };
 
   // ③ diff 证据
-  const diffs = backups.map((b) => gitDiff(path.relative(ROOT, b.abs))).join("\n");
+  const diffs = backups.map((b) => gitDiff(path.relative(ROOT, b.abs), b.bak)).join("\n");
   if (diffs.trim()) {
     fs.writeFileSync(path.join(EVIDENCE_DIR, `changes-${taskId}.diff`), diffs);
   }
@@ -160,8 +204,11 @@ export async function applyResponse({
     response_sha256: sha256(text),
     response_chars: text.length,
     applied_files: applied,
+    baseline_source: baselineSources,
     before: { target: before.target.code, regression: before.regression.code },
     after: { target: after.target.code, regression: after.regression.code },
+    before_detail: { target: before.target.tail, regression: before.regression.tail },
+    after_detail: { target: after.target.tail, regression: after.regression.tail },
   };
   fs.appendFileSync(
     path.join(EVIDENCE_DIR, "minimax-agent-calls.jsonl"),
@@ -174,8 +221,11 @@ export async function applyResponse({
     channel: "agent-session",
     scope_id: scopeId,
     applied_files: applied,
+    baseline_source: baselineSources,
     before: { target: before.target.code, regression: before.regression.code },
     after: { target: after.target.code, regression: after.regression.code },
+    before_detail: { target: before.target.tail, regression: before.regression.tail },
+    after_detail: { target: after.target.tail, regression: after.regression.tail },
     minimax: { provider, model, session_url: sessionUrl, response_file: record.response_file },
     powercontext: { scope_id: scopeId, artifact, error: stateError },
     previous_state_found: previousStateFound,

@@ -1,12 +1,18 @@
 {
   "task_id": "T-1042",
-  "started_at": "2026-11-15T06:18:25.102Z",
+  "started_at": "2026-11-15T09:14:13.744Z",
   "channel": "agent-session",
   "scope_id": "scp_4ryw6s7cf2rnk9jxx4ermqabha",
   "applied_files": [
     {
       "path": "app/tickets.py",
       "chars": 1752
+    }
+  ],
+  "baseline_source": [
+    {
+      "path": "app/tickets.py",
+      "source": "evidence"
     }
   ],
   "before": {
@@ -16,6 +22,14 @@
   "after": {
     "target": 0,
     "regression": 0
+  },
+  "before_detail": {
+    "target": "FAILED sample/tests/test_tickets_task.py::test_page_size_capped_at_100 - asse... | 4 failed, 1 passed in 0.13s",
+    "regression": "....                                                                     [100%] | 4 passed in 0.01s"
+  },
+  "after_detail": {
+    "target": ".....                                                                    [100%] | 5 passed in 0.01s",
+    "regression": "....                                                                     [100%] | 4 passed in 0.01s"
   },
   "minimax": {
     "provider": "MiniMax Code 网页端 (agent.minimax.cn)",
@@ -27,12 +41,11 @@
     "scope_id": "scp_4ryw6s7cf2rnk9jxx4ermqabha",
     "artifact": {
       "family": "atomic-memory",
-      "artifact_id": "art_701943cdd1d74e1aaf1ca7225662c6e2",
+      "artifact_id": "art_e301fe6fff6f43ee87ba6926a31c34b6",
       "revision": 1
     },
     "error": null
   },
   "previous_state_found": true,
-  "diff_file": "changes-T-1042.diff",
-  "baseline_file": "evidence/before-tickets.py"
+  "diff_file": "changes-T-1042.diff"
 }
