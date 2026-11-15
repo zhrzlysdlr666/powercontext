@@ -25,9 +25,9 @@
 `node src/cli.mjs import` 把 `sample/` 下的规格、代码、测试写入 seekdb（嵌入式 `@oceanbase/seekdb-node`），建立 ik 全文索引；
 `node src/cli.mjs context` / `prompt` 用 `MATCH ... AGAINST` 检索后组装上下文。
 
-- 入库统计：`spec 13 / test 9 / task 4 / code 4`，共 30 个切片（`apply` 生成的 `.orig` 快照会被跳过并在下次 `import` 时清理，不参与检索）
+- 入库统计：`spec 12 / test 9 / task 4 / code 4`，共 29 个切片（`apply` 生成的 `.orig` 快照会被跳过并在下次 `import` 时清理，不参与检索）
 - 检索结果：`evidence/context-T-1042.json`（含每条命中的 path / symbol / score / snippet）
-- 命中示例：`SPEC-pagination#p0` 6.5979、`SPEC-filtering#p0` 5.7228、`test_tag_filter_combines_with_status` 6.0979、`test_filter_by_tag` 4.6330、`test_page_zero_normalized_to_first_page` 4.3851、`app/tickets.py:list_tickets` 3.9438
+- 命中示例：`SPEC-pagination#p0` 6.3248、`SPEC-filtering#p0` 5.4222、`test_tag_filter_combines_with_status` 5.8498、`test_filter_by_tag` 4.3330、`test_page_zero_normalized_to_first_page` 4.1279、`app/tickets.py:list_tickets` 3.6808
 - 规格更新后是否跟着变：见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 出现新文本 → 还原后消失）
 
 ## 3. 验证结果（修改前 / 修改后）
@@ -61,7 +61,7 @@
 | 项 | 值 |
 |---|---|
 | Scope | `scp_4ryw6s7cf2rnk9jxx4ermqabha`（标题：SDD 上下文模块 T-1042） |
-| Artifact | `atomic-memory / art_e301fe6fff6f43ee87ba6926a31c34b6`（rev 1） |
+| Artifact | `atomic-memory / art_e67fb4cb1d2840a18ad6f4d02e480351`（rev 1） |
 | 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification（原文见 `state-T-1042.json`） |
 | 重启后读回 | 已验证：服务端进程重启后再次 `state`，仍返回同一条记录（`run-T-1042.json` 的 `previous_state_found: true`） |
 

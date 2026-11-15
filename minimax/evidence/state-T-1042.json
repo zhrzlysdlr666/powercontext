@@ -11,15 +11,15 @@
     ],
     "todo": [],
     "verification": [
-      "修改前 目标测试 exit=1：FAILED sample/tests/test_tickets_task.py::test_page_size_capped_at_100 - asse... | 4 failed, 1 passed in 0.13s",
+      "修改前 目标测试 exit=1：FAILED sample/tests/test_tickets_task.py::test_page_size_capped_at_100 - asse... | 4 failed, 1 passed in 0.14s",
       "修改前 回归测试 exit=0：....                                                                     [100%] | 4 passed in 0.01s",
       "修改后 目标测试 exit=0：.....                                                                    [100%] | 5 passed in 0.01s",
       "修改后 回归测试 exit=0：....                                                                     [100%] | 4 passed in 0.01s"
     ],
-    "saved_at": "2026-11-15T09:14:19.330Z",
+    "saved_at": "2026-11-15T09:35:12.041Z",
     "artifact": {
       "family": "atomic-memory",
-      "artifact_id": "art_e301fe6fff6f43ee87ba6926a31c34b6",
+      "artifact_id": "art_e67fb4cb1d2840a18ad6f4d02e480351",
       "revision": 1
     }
   }

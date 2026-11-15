@@ -22,7 +22,7 @@ node src/cli.mjs context     # → ctx_clean.json：v3 文本消失
 
 ## 对照结果（`specs` 段中 `SPEC-filtering.md#p0` 这一条）
 
-**改前**（score 5.7228）
+**改前**（score 5.4222）
 
 ```
 SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度
@@ -34,7 +34,7 @@ SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度
 | 标签 | `tag` | 成员匹配 | 工单 `tags` 数组包含该标签即命中 |
 ```
 
-**改后**（score 5.3242）
+**改后**（score 5.0808）
 
 ```
 SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度
@@ -54,9 +54,9 @@ SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度
 
 | 文件 | 状态 | `SPEC-filtering.md#p0` 命中分数 | snippet 里是否含 v3 |
 |---|---|---|---|
-| `ctx_after.json` | 原始规格 | 5.7228 | 否 |
-| `ctx_v3.json` | 改一行后重新 import | 5.3242 | **是** |
-| `ctx_clean.json` | `git checkout` 还原后重新 import | 5.7228 | 否 |
+| `ctx_after.json` | 原始规格 | 5.4222 | 否 |
+| `ctx_v3.json` | 改一行后重新 import | 5.0808 | **是** |
+| `ctx_clean.json` | `git checkout` 还原后重新 import | 5.4222 | 否 |
 
 三份都是 `node src/cli.mjs context` 的原始 stdout，未做任何手工编辑；`ctx_clean.json` 与
 `ctx_after.json` 的分数完全一致，说明检索结果跟着库内内容走，不是缓存也不是固定答案。

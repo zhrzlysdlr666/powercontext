@@ -3,3 +3,4 @@ data/
 sample/app/*.orig
 evidence/_*
 evidence/scratch/
+.env

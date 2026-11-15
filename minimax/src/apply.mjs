@@ -14,11 +14,13 @@ import { ensureScope, saveState, loadState } from "./state.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SAMPLE = path.join(ROOT, "sample");
+// Linux 上一般只有 python3，Windows 上才是 python；PYTHON 环境变量可覆盖
+const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const TARGET_TEST = "sample/tests/test_tickets_task.py";
 const REGRESSION_TEST = "sample/tests/test_tickets.py";
 
 export function runPytest(relPath) {
-  const r = spawnSync("python", ["-m", "pytest", relPath, "-q", "--no-header"], {
+  const r = spawnSync(PY, ["-m", "pytest", relPath, "-q", "--no-header"], {
     cwd: ROOT,
     encoding: "utf8",
   });

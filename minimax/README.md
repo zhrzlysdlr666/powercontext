@@ -13,7 +13,7 @@
 | 依赖 | 版本 | 说明 |
 |---|---|---|
 | Node.js | **≥ 22**（实测 22.22.2） | `@oceanbase/seekdb-node` 的 `engines` 要求 |
-| Python | ≥ 3.10（实测 3.13.14） | 跑 `pytest`；Linux/macOS 的 `python3` 同义 |
+| Python | ≥ 3.10（实测 3.12/3.13） | 跑 `pytest`；命令名在 Linux/macOS 是 `python3`，Windows 是 `python`（`apply` 会按平台自动选，也可用 `PYTHON=` 覆盖） |
 | `@oceanbase/seekdb-node` | 1.4.0 | 随 `npm install` 装，`optionalDependencies` 会按平台取 linux-x64 / linux-arm64 / darwin-arm64 / win32-x64 二进制 |
 | `mysql2` | 3.11.x | seekdb 走 MySQL 协议 |
 | `pytest` | 8.x 或 9.x（`requirements.txt` 写 `>=8,<9`） | 测试运行器 |
@@ -23,7 +23,11 @@ Linux x86_64 干净环境按下面四条即可跑通；`data/` 是运行时目�
 
 ```bash
 npm install                                   # @oceanbase/seekdb-node + mysql2
-python -m pip install -r requirements.txt     # pytest；PowerContext 见第 5 节
+
+# Python 依赖：Linux/macOS 强烈建议用 venv，否则新版发行版会因 PEP 668 拒绝写系统环境
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt               # pytest；PowerContext 见第 5 节
+# Windows: py -m venv .venv && .venv/Scripts/activate && pip install -r requirements.txt
 
 
 # ① 把 sample/ 下的规格、代码、测试导入 seekdb（首次会自动拉起本地 seekdb 并建表）
@@ -98,7 +102,7 @@ node src/cli.mjs apply evidence/minimax-response-T-1042.md \
 | 技术 | 在本项目里实际承担的作用 |
 |---|---|
 | **MiniMax**（`MiniMax-M3.1-Flash`，Anthropic 兼容通道 `api.minimaxi.com/anthropic`） | 拿到上下文后生成 `app/tickets.py` 的完整修改；本次实际走网页 Agent 通道，会话链接、回复 sha256、应用文件与前后测试退出码记入 `evidence/minimax-agent-calls.jsonl`，与提交的代码差异一一对应（直连 API 通道会记 `minimax-calls.jsonl`，本次未使用） |
-| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 30 个切块（spec 13 / test 9 / task 4 / code 4）；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
+| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 29 个切块（spec 12 / test 9 / task 4 / code 4）；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
 | **PowerContext**（HTTP API，`127.0.0.1:8787`） | 用 `POST /v1/scopes` 建独立 scope，`POST /v1/memory/remember` 写任务状态（completed / todo / verification），`POST /v1/memory/entries/list` 读回；重启模块后 `state` 命令仍能取到上一次的进展 |
 
 ## 4. 验证样例（可直接复现）
@@ -124,8 +128,8 @@ sample/
 ```bash
 # 1) 修改前：恢复基线 → 目标测试 4 failed, 1 passed（exit=1）；回归 4 passed（exit=0）
 cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.py.orig
-python -m pytest sample/tests/test_tickets_task.py -q
-python -m pytest sample/tests/test_tickets.py -q
+python3 -m pytest sample/tests/test_tickets_task.py -q   # Windows 用 python
+python3 -m pytest sample/tests/test_tickets.py -q
 
 # 2) 资料入 seekdb → 组装上下文 → 拼提示词
 node src/cli.mjs import
@@ -149,9 +153,9 @@ node src/cli.mjs state
 
 | 类型 | 来源 | 命中示例 |
 |---|---|---|
-| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.60 / 5.72 / 5.00 |
-| 代码 | `app/tickets.py` 的 `list_tickets` | 3.94 |
-| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 6.10 / 4.63 / 4.39 |
+| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.32 / 5.42 / 4.77 |
+| 代码 | `app/tickets.py` 的 `list_tickets` | 3.68 |
+| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 5.85 / 4.33 / 4.13 |
 
 规格更新后是否跟着变，见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 输出里出现新文本 → 还原后消失）。
 
@@ -173,8 +177,10 @@ node src/cli.mjs import
 ```bash
 python -m pip install "powercontext[server,builtin,cli]"   # 实测 1.5.1
 
-# ① 生成基础配置（无推理模型也能用，只走显式 memory 通道；交互里直接回车确认）
-powercontext config init --template -o .env
+# ① 配置：直接用仓库里随附的模板（无推理模型，只走显式 memory 通道）
+cp docs/powercontext.env.example .env
+#    等价写法（向导会问 "Write .env? [Y/n]"，非交互环境下必须喂一个 y，否则会 Aborted）：
+#    yes | powercontext config init --template -o .env
 
 # ② 启动 API（SQLite 后端要求 role=all，首次启动会自动建表/迁移）
 powercontext server run --host 127.0.0.1 --port 8787 --env-file .env --role all

@@ -13,7 +13,7 @@ const TARGET_TEST = "sample/tests/test_tickets_task.py";
 const REGRESSION_TEST = "sample/tests/test_tickets.py";
 
 export function runPytest(relPath) {
-  const r = spawnSync("python", ["-m", "pytest", relPath, "-q", "--no-header"], {
+  const r = spawnSync(process.env.PYTHON || (process.platform === "win32" ? "python" : "python3"), ["-m", "pytest", relPath, "-q", "--no-header"], {
     cwd: ROOT,
     encoding: "utf8",
   });

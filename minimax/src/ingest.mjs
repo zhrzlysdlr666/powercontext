@@ -63,7 +63,6 @@ export async function ingestSample(sampleDir) {
       // 混进索引会让"相关代码"同时命中两个版本的同一函数，这里直接跳过。
       if (file.startsWith(".") || /\.(orig|bak|tmp|swp)$/i.test(file)) continue;
       const rel = path.relative(sampleDir, full).replace(/\\/g, "/");
-      seen.add(rel);
       const raw = fs.readFileSync(full, "utf8");
       const base = file.replace(/\.[^.]+$/, "");
       let index = 0;
@@ -71,6 +70,7 @@ export async function ingestSample(sampleDir) {
         // 同一文件的多段必须有区分度，否则会被 (path, symbol) 唯一键覆盖成一条
         if (!chunk.symbol) chunk.symbol = `#p${index}`;
         index += 1;
+        seen.add(`${rel}::${chunk.symbol}`);
         // 标题拼进正文：单段正文常常看不出属于哪个文档，拼标题后检索命中更准
         const body = `${chunk.title}\n\n${chunk.body}`;
         await db.query(
@@ -86,10 +86,12 @@ export async function ingestSample(sampleDir) {
   }
   // 清理：库里存在、但本次扫描不到的文档（删掉的规格、apply 生成的 .orig 快照等），
   // 否则检索会把已经不存在的来源当成命中返回。
-  const [existing] = await db.query("SELECT DISTINCT path FROM ctx_docs");
-  const stale = existing.map((r) => r.path).filter((p) => !seen.has(p));
+  const [existing] = await db.query("SELECT path, symbol FROM ctx_docs");
+  const stale = existing
+    .filter((r) => !seen.has(`${r.path}::${r.symbol}`))
+    .map((r) => [r.path, r.symbol]);
   if (stale.length) {
-    await db.query("DELETE FROM ctx_docs WHERE path IN (?)", [stale]);
+    await db.query("DELETE FROM ctx_docs WHERE (path, symbol) IN (?)", [stale]);
   }
   const [rows] = await db.query(
     "SELECT kind, COUNT(*) AS n FROM ctx_docs GROUP BY kind ORDER BY kind",

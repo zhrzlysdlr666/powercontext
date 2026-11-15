@@ -16,16 +16,24 @@ export async function openDb() {
   fs.mkdirSync(path.dirname(DB_DIR), { recursive: true });
   handle = await seekdb.open(DB_DIR, { parameters: { memory_budget: "1G" } });
   const ep = handle.connectionOptions();
-  if (ep.transport !== "tcp") throw new Error(`unsupported transport: ${ep.transport}`);
-  pool = mysql.createPool({
-    host: ep.host,
-    port: ep.port,
+  const base = {
     user: ep.user,
     password: "",
     database: "test",
     connectionLimit: 4,
     charset: "utf8mb4",
-  });
+  };
+  // 不同平台拿到的连接方式不同：Linux/macOS 默认 unix_socket，Windows 是 tcp 或 named_pipe。
+  // 三种都要接，否则在 Linux 的评审机上第一步 import 就会直接抛错。
+  if (ep.transport === "tcp") {
+    pool = mysql.createPool({ ...base, host: ep.host, port: ep.port });
+  } else if (ep.transport === "unix_socket") {
+    pool = mysql.createPool({ ...base, socketPath: ep.unixSocket });
+  } else if (ep.transport === "named_pipe") {
+    pool = mysql.createPool({ ...base, socketPath: ep.namedPipe });
+  } else {
+    throw new Error(`unsupported transport: ${ep.transport}`);
+  }
   await ensureSchema(pool);
   return pool;
 }
