@@ -35,6 +35,28 @@ node src/cli.mjs state
 | `minimax-calls.jsonl` | 每次模型调用：模型、端点、请求 id、token 用量、时延、prompt 摘要哈希 |
 | `run-T-1042.json` | 修改前后测试退出码、作用文件、PowerContext 写入的 artifact |
 
+### 1.1 两条通道：直连 API 与 MiniMax Agent 会话
+
+MiniMax 有两种可用形态，本模块都支持，产出的证据与 `run-T-1042.json` 结构一致：
+
+| 通道 | 命令 | 适用场景 | 记录文件 |
+|---|---|---|---|
+| A. 直连 API | `node src/cli.mjs dev` | 有开放平台 API Key（按量计费或 Token Plan） | `minimax-calls.jsonl` |
+| B. Agent 会话 | `node src/cli.mjs prompt` → 粘贴到 MiniMax Agent → 存回复 → `node src/cli.mjs apply <回复.md>` | 只有 MiniMax Agent 网页额度、没有 API Key | `prompt-T-1042.md` + `minimax-response-T-1042.md` + `minimax-agent-calls.jsonl` |
+
+通道 B 的分工是：`prompt` 用 **seekdb 检索出来的上下文**（seekdb 不可用时退回 `sample/` 全量）拼成一段提示词；模型在 MiniMax Agent 里完成修改；`apply` 负责解析回复里的 ```` ```python file=... ```` 代码块、**先把目标文件恢复成修改前快照再跑一次目标/回归测试**、应用后重跑、落 `changes-T-1042.diff`、写 PowerContext 与 `run-T-1042.json`。这样「修改前失败、修改后通过」的对照无论跑几次都可复现。
+
+```bash
+node src/cli.mjs prompt                                   # → evidence/prompt-T-1042.md
+# 整段粘贴到 MiniMax Agent（agent.minimax.cn），把回复另存为 evidence/minimax-response-T-1042.md
+node src/cli.mjs apply evidence/minimax-response-T-1042.md \
+  --provider="MiniMax Agent (agent.minimax.cn)" \
+  --model="MiniMax-M3.1-Flash" \
+  --session="<会话链接>"
+```
+
+`apply` 额外参数只用于留痕，会写进 `evidence/minimax-agent-calls.jsonl`，便于评审把会话、上下文和代码差异对应起来。
+
 ## 2. 上下文模块的输入输出
 
 **入口**：`node src/cli.mjs context`（CLI）或 `import { buildContext } from "./src/context.mjs"`（库调用）。

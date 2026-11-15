@@ -1,4 +1,5 @@
 node_modules/
 data/
 sample/app/*.orig
-evidence/
+evidence/_*
+evidence/scratch/
