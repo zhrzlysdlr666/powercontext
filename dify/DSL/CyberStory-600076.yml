@@ -1,0 +1,268 @@
+app:
+  description: 你说一句话，它去 seekdb 里翻出公司宇宙的角色/梗/道具，再让大模型现编一段微型说书。
+  icon: 🎭
+  icon_background: '#FFEAD5'
+  mode: advanced-chat
+  name: 赛博说书人 CyberStory
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.3.1
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: '说一句今天发生的事，比如「凌晨三点还在等发布」，我给你编一段公司宇宙的微型说书。'
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+    - 凌晨三点还在等发布
+    - 机房又断网了
+    - 实习生只改了一行代码
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: start-to-http
+      source: start_node
+      sourceHandle: source
+      target: http_node
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: http-to-code
+      source: http_node
+      sourceHandle: source
+      target: code_node
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: code-to-llm
+      source: code_node
+      sourceHandle: source
+      target: llm_node
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: answer
+      id: llm-to-answer
+      source: llm_node
+      sourceHandle: source
+      target: answer_node
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: 用户输入的一句场景
+        selected: false
+        title: 开始
+        type: start
+        variables:
+        - label: 今天发生了什么
+          max_length: 300
+          options: []
+          required: true
+          type: paragraph
+          variable: query
+      height: 116
+      id: start_node
+      position:
+        x: 30
+        y: 260
+      positionAbsolute:
+        x: 30
+        y: 260
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        authorization:
+          type: no-auth
+        body:
+          data:
+          - key: ''
+            type: text
+            value: '{"input": "{{#start_node.query#}}", "session_id": "{{#sys.conversation_id#}}"}'
+          type: json
+        desc: 调用 dify/backend 的 /compose：拿 seekdb 检索结果，同时把这一回合写进 turns 表
+        headers: 'Content-Type: application/json'
+        method: post
+        params: ''
+        retry_config:
+          enabled: true
+          exponential_backoff:
+            enabled: true
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 2
+          retry_interval: 1000
+        timeout:
+          connect: 10
+          read: 60
+          write: 30
+        title: 检索 seekdb
+        type: http-request
+        url: http://host.docker.internal:8181/compose
+      height: 110
+      id: http_node
+      position:
+        x: 334
+        y: 260
+      positionAbsolute:
+        x: 334
+        y: 260
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "def main(body: str) -> dict:\n    import json\n    try:\n        d =\
+          \ json.loads(body or \"{}\")\n    except Exception:\n        d = {}\n  \
+          \  hits = d.get(\"hits\") or []\n    ctx = d.get(\"context\") or \"（本次没有命中任何素材）\"\
+          \n    titles = \"、\".join([str(h.get(\"title\") or \"\") for h in hits])\
+          \ or \"无\"\n    return {\n        \"context\": ctx,\n        \"hit_count\"\
+          : len(hits),\n        \"hit_titles\": titles,\n    }\n"
+        code_language: python3
+        desc: 解析 /compose 的 JSON，抽出素材上下文与命中数量
+        outputs:
+          context:
+            children: null
+            type: string
+          hit_count:
+            children: null
+            type: number
+          hit_titles:
+            children: null
+            type: string
+        selected: false
+        title: 解析检索结果
+        type: code
+        variables:
+        - value_selector:
+          - http_node
+          - body
+          variable: body
+      height: 110
+      id: code_node
+      position:
+        x: 486
+        y: 260
+      positionAbsolute:
+        x: 486
+        y: 260
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: 用命中的素材编一段说书
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            temperature: 0.8
+          mode: chat
+          name: deepseek-chat
+          provider: langgenius/openai_api_compatible/openai_api_compatible
+        prompt_template:
+        - role: system
+          text: '你是公司宇宙的说书人。你只会用【素材】里出现的人、事、物来讲故事，不许自己编造新的人名或道具。
+
+            风格：短、冷、有画面感，像同事在茶水间随口讲的一个段子，60~120 字，不要总结，不要说教。
+
+            如果素材里有名字（比如铁柱）或道具（比如一捆网线），必须至少用到两个，并让它们推动情节。'
+        - role: user
+          text: '场景：{{#start_node.query#}}
+
+
+            {{#code_node.context#}}
+
+
+            请据此写一段说书。'
+        selected: false
+        title: 说书人
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 110
+      id: llm_node
+      position:
+        x: 638
+        y: 260
+      positionAbsolute:
+        x: 638
+        y: 260
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#llm_node.text#}}
+
+
+          ---
+
+          📚 seekdb 命中 {{#code_node.hit_count#}} 条素材：{{#code_node.hit_titles#}}
+
+
+          {{#code_node.context#}}'
+        desc: 回答 + 本回合实际用到的 seekdb 素材（保证命中的数据一定出现在回答里）
+        selected: false
+        title: 直接回复
+        type: answer
+        variables: []
+      height: 110
+      id: answer_node
+      position:
+        x: 942
+        y: 260
+      positionAbsolute:
+        x: 942
+        y: 260
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244

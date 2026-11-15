@@ -1,0 +1,19 @@
+[workflow_started] status=running elapsed=0.00s tokens=None
+[node] 开始         succeeded      0ms  
+[node] 检索 seekdb  succeeded    344ms  
+[node] 解析检索结果     succeeded    270ms  
+[node] 说书人        succeeded   1943ms  
+[node] 直接回复       succeeded      0ms  
+[workflow_finished] status=succeeded elapsed=2.68s tokens=290
+--- output:answer ---
+机房又断网了。铁柱抱着一捆网线冲进去，说先物理开光。实习生小声说他就改了一行。铁柱把网线一甩：你那一行，diff 里四百行，三百八是格式化。正说着，屏幕弹出重新登录——Cookie 掉了，你的会话比你本人先下班了。
+
+---
+📚 seekdb 命中 3 条素材：一捆网线、实习生改了一行、Cookie 掉了
+
+【seekdb 检索到的素材 TOP3】
+1. [道具] 一捆网线：物理连接万物的信仰道具，机房开光必备
+2. [梗] 实习生改了一行：实习生说只改了一行代码，diff 里出现了四百行，其中三百八十行是重新格式化。
+3. [梗] Cookie 掉了：上周还能免登录，这周突然让你重新登录，说明你的会话比你本人先下班了。
+--- output:files ---
+[]

@@ -1,0 +1,30 @@
+# Dify 社区版 · 本机部署补充配置（示例，按需复制到 dify/docker/docker-compose.override.yaml）
+#
+# 用途：Dify 1.19 的模型供应商是插件，安装插件要访问 marketplace.dify.ai，
+# 调用模型也要出网。国内直连不通时，把宿主机代理注入到需要出网的四个服务即可，
+# 不用改 Dify 自带的 docker-compose.yaml。
+#
+# 复制后把 <HOST_PROXY> 换成你的代理地址，例如 http://host.docker.internal:7890
+services:
+  api:
+    environment: &proxy-env
+      HTTP_PROXY: <HOST_PROXY>
+      HTTPS_PROXY: <HOST_PROXY>
+      # 内部服务一律直连，避免被代理劫持
+      NO_PROXY: localhost,127.0.0.1,::1,db,redis,plugin_daemon,sandbox,ssrf_proxy,agent_backend,agent_ssrf_proxy,web,nginx,pgvector,local_sandbox
+      # HTTP 请求节点要访问宿主机上的检索后端（host.docker.internal:8181），
+      # 走 ssrf_proxy 会被 squid 的私网 ACL 拦掉，置空改为直连
+      SSRF_PROXY_HTTP_URL: ""
+      SSRF_PROXY_HTTPS_URL: ""
+      SSRF_PROXY_ALL_URL: ""
+    extra_hosts: &host-gateway
+      - "host.docker.internal:host-gateway"
+  worker:
+    environment: *proxy-env
+    extra_hosts: *host-gateway
+  worker_beat:
+    environment: *proxy-env
+    extra_hosts: *host-gateway
+  plugin_daemon:
+    environment: *proxy-env
+    extra_hosts: *host-gateway

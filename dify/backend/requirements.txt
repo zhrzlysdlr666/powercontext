@@ -1,0 +1,6 @@
+# 赛博说书人 检索后端依赖（Python 3.12 推荐）
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pymysql>=1.1.1
+# 嵌入式 seekdb 引擎（自带 seekdb.exe / 各平台二进制，无需额外装数据库）
+pylibseekdb>=1.4.0

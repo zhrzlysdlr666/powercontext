@@ -1,0 +1,16 @@
+# seekdb 嵌入式引擎的数据目录（运行后生成，体积大，不入库）
+backend/data/
+
+# Python 运行产物
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 本地日志与临时文件
+*.log
+*.tmp
+.DS_Store
+
+# 但 evidence 下的运行日志是交付证据，需要入库
+!evidence/*.log
