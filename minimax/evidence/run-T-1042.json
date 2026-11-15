@@ -33,5 +33,6 @@
     "error": null
   },
   "previous_state_found": true,
-  "diff_file": null
+  "diff_file": "changes-T-1042.diff",
+  "baseline_file": "evidence/before-tickets.py"
 }
