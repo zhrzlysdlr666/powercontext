@@ -198,4 +198,5 @@ completed / todo / verification（实测：先写入、再重启服务端、再�
 - 代码切块按顶层 `def` / `class` 切，模块级常量不单独成块（本样例的 `TICKETS` 测试夹具因此在代码块里看不到）。
 - 全文检索用 `ik` 分词；任务描述过于口语化且不含标识符时会退回 `LIKE` 兜底，召回不如向量检索细腻。
 - MiniMax 输出按 `file=` 代码块解析，模型若改格式需要调整 `src/dev.mjs::extractFiles`。
+  回复文件用 CRLF 保存（Windows 编辑器默认）时，解析前会先归一化成 LF，两种换行都能跑。
 - PowerContext 未配置推理模型，因此只用显式 `memory/remember` 通道，不依赖后台记忆抽取。

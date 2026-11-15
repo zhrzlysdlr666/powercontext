@@ -60,10 +60,22 @@
 
 | 项 | 值 |
 |---|---|
-| Scope | `scp_4ryw6s7cf2rnk9jxx4ermqabha`（标题：SDD 上下文模块 T-1042） |
-| Artifact | `atomic-memory / art_e67fb4cb1d2840a18ad6f4d02e480351`（rev 1） |
-| 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification（原文见 `state-T-1042.json`） |
-| 重启后读回 | 已验证：服务端进程重启后再次 `state`，仍返回同一条记录（`run-T-1042.json` 的 `previous_state_found: true`） |
+| Scope | `scp_14b3m2p4jcggwbwcmkvyxvw1w8`（标题：SDD 上下文模块 T-1042） |
+| Artifact | `atomic-memory / art_30ab1a36dc7b4d459908352427d0ad66`（rev 1） |
+| 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification（原文见 `state-T-1042.json`，`scope_id` 与上表一致） |
+| 重启后读回 | 已验证：服务端进程重启后再次 `apply`，`run-T-1042.json` 的 `previous_state_found: true`，`scope_id` 仍是 `scp_14b3…w1w8` |
+
+复现顺序就是"从空状态开始"的顺序（PowerContext 用全新 SQLite 库）：
+
+1. 首次 `apply`：库里只有 `Default` scope，模块新建 `SDD 上下文模块 T-1042` 并写入 T-1042 的状态，
+   报告里 `previous_state_found: false`（此时确实没有上次状态）。
+2. `Ctrl-C` 停掉 `powercontext server run`，再用同一条命令重启（SQLite 库不动）。
+3. 再次 `apply`：`ensureScope` 按标题找回同一个 scope，`loadState` 读到第 1 步写入的记录，
+   报告里 `previous_state_found: true`；`state` 读回的 completed / todo / verification 与写入内容一致。
+   这两份就是本目录下的 `run-T-1042.json` 与 `state-T-1042.json`。
+
+> 每次 `saveState` 都会生成新的 artifact（`revision` 从 1 计），所以 artifact id 以 `state-T-1042.json`
+> 里的为准；重跑一次 `apply` 后这个 id 会变，属正常现象。
 
 ## 6. 复现命令
 
@@ -81,6 +93,9 @@ node src/cli.mjs apply evidence/minimax-response-T-1042.md \
   --model="MiniMax-M3.1-Flash" \
   --session="https://agent.minimax.cn/mavis?id=463620122608782"
 node src/cli.mjs state                        # 读回 PowerContext 中的任务状态
+
+# 状态复用：停掉 powercontext server 再启动，然后把上面两步再跑一遍，
+# apply 报告里的 previous_state_found 会变成 true，state 读回同一条记录
 ```
 
 `apply` 恢复基线的顺序是 `sample/app/tickets.py.orig` → 本目录 `before-tickets.py`，所以即使从干净

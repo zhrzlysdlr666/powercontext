@@ -22,7 +22,9 @@ export function runPytest(relPath) {
   return { code: r.status, tail, out };
 }
 
-function extractFiles(text) {
+function extractFiles(raw) {
+  // 与 apply.mjs 保持一致：CRLF 回复先归一化成 LF 再解析
+  const text = String(raw).replace(/\r\n?/g, "\n");
   const files = [];
   const re = /```(?:python|py)[^\n]*?file=([^\s`]+)\n([\s\S]*?)```/g;
   let m;

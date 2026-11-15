@@ -29,7 +29,10 @@ export function runPytest(relPath) {
   return { code: r.status, tail, out };
 }
 
-function extractFiles(text) {
+function extractFiles(raw) {
+  // 模型回复被编辑器/剪贴板存成 CRLF 时，```python file=... 后面是 \r\n，
+  // 不归一化会让下面的正则整篇匹配不到（评审在 Windows 上存盘就会踩到）。
+  const text = String(raw).replace(/\r\n?/g, "\n");
   const files = [];
   const re = /```(?:python|py)[^\n]*?file=([^\s`]+)\n([\s\S]*?)```/g;
   let m;
