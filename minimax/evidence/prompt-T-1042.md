@@ -73,35 +73,39 @@
 - 2026-09-14：曾允许 page=0 表示"第一页"，与前端 0-based 约定冲突，已废弃。当前统一 1-based，`page=0` 仅作为非法输入被归一化，不表示特殊语义。
 ````
 
-````markdown title=specs/SPEC-filtering.md
-# SPEC-FILTERING 列表筛选规格
+````markdown title=specs/SPEC-pagination.md
+# SPEC-PAGINATION 分页规格
 
-编号：SPEC-FILTERING
-状态：生效中（v2，2026-11-02 修订）
-适用范围：工单列表 `list_tickets`。
+编号：SPEC-PAGINATION
+状态：生效中（v3，2026-10-28 修订）
+适用范围：所有列表类接口，`list_tickets` 为第一个落地接口。
 
-## 1. 支持的筛选维度
+## 1. 输入参数
 
-| 维度 | 参数 | 匹配方式 | 说明 |
+| 参数 | 类型 | 默认值 | 约束 |
 |---|---|---|---|
-| 状态 | `status` | 精确匹配 | open / closed |
-| 优先级 | `priority` | 精确匹配 | P0 / P1 / P2 |
-| 标签 | `tag` | 成员匹配 | 工单 `tags` 数组包含该标签即命中 |
+| page | int | 1 | 页码从 1 开始；小于 1 时按 1 处理 |
+| page_size | int | 20 | 每页条数；大于 100 时按 100 处理；小于 1 时按 20 处理 |
 
-## 2. 组合规则
+## 2. 输出约定
 
-- 多个筛选维度之间是 **AND** 关系：工单必须同时满足全部条件。
-- 参数为 `None` 表示不启用该维度，不能把 `None` 当成筛选值。
-- 标签筛选必须容忍工单没有 `tags` 字段（视为空数组），不能抛异常。
+- `page` 返回**归一化之后**的页码，而不是调用方传入的原始值。
+- `page_size` 返回**归一化之后**的每页条数。
+- `total` 是筛选后的总条数，与分页无关。
+- 页码越界时 `items` 为空列表，`total` 仍返回筛选后的总数，不报错。
 
-## 3. 顺序约定
+## 3. 归一化示例
 
-筛选项先全部应用，再计算 `total`，最后做分页切片。`total` 必须反映筛选后的条数，不是原始条数。
+| 传入 | 归一化 | 说明 |
+|---|---|---|
+| page=0 | 1 | 非法页码回落到首页 |
+| page=-3 | 1 | 负数同样回落到首页 |
+| page_size=1000 | 100 | 上限截断 |
+| page_size=0 | 20 | 非法页长回落到默认值 |
 
-## 4. 变更记录
+## 4. 历史决策
 
-- v2（2026-11-02）：新增标签维度 `tag`。此前只支持状态与优先级。
-- v1（2026-08-20）：初版，状态 + 优先级。
+- 2026-09-14：曾允许 page=0 表示"第一页"，与前端 0-based 约定冲突，已废弃。当前统一 1-based，`page=0` 仅作为非法输入被归一化，不表示特殊语义。
 ````
 
 ````markdown title=specs/SPEC-filtering.md
@@ -139,23 +143,158 @@
 
 ````python title=app/tickets.py
 """工单列表服务（业务工程样本，供 SDD 上下文模块演示一次真实代码修改）。"""
-
 from __future__ import annotations
-
-
-def list_tickets(tickets, status=None, priority=None, page=1, page_size=20):
-    """按状态/优先级筛选工单并分页返回。
-
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+def _normalize_page(page):
+    """SPEC-PAGINATION：page 从 1 开始，小于 1 一律按 1 处理。"""
+    try:
+        value = int(page)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE
+    return value if value >= DEFAULT_PAGE else DEFAULT_PAGE
+def _normalize_page_size(page_size):
+    """SPEC-PAGINATION：page_size 上限 100，下限 1，非法值回落到默认值 20。"""
+    try:
+        value = int(page_size)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE_SIZE
+    if value > MAX_PAGE_SIZE:
+        return MAX_PAGE_SIZE
+    if value < 1:
+        return DEFAULT_PAGE_SIZE
+    return value
+def _has_tag(ticket, tag):
+    """SPEC-FILTERING：标签按成员匹配，工单缺少 tags 字段时视为空数组。"""
+    tags = ticket.get("tags")
+    if not isinstance(tags, (list, tuple, set, frozenset)):
+        return False
+    return tag in tags
+def list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):
+    """按状态/优先级/标签筛选工单并分页返回。
     tickets: list[dict]，每项含 id / title / status / priority / tags
     返回 dict：{items, page, page_size, total}
     """
     items = list(tickets)
-
     if status is not None:
         items = [t for t in items if t.get("status") == status]
     if priority is not None:
         items = [t for t in items if t.get("priority") == priority]
+    if tag is not None:
+        items = [t for t in items if _has_tag(t, tag)]
+    page = _normalize_page(page)
+    page_size = _normalize_page_size(page_size)
+    total = len(items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return {
+        "items": items[start:end],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
+````
 
+````python title=app/tickets.py
+"""工单列表服务（业务工程样本，供 SDD 上下文模块演示一次真实代码修改）。"""
+from __future__ import annotations
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+def _normalize_page(page):
+    """SPEC-PAGINATION：page 从 1 开始，小于 1 一律按 1 处理。"""
+    try:
+        value = int(page)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE
+    return value if value >= DEFAULT_PAGE else DEFAULT_PAGE
+def _normalize_page_size(page_size):
+    """SPEC-PAGINATION：page_size 上限 100，下限 1，非法值回落到默认值 20。"""
+    try:
+        value = int(page_size)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE_SIZE
+    if value > MAX_PAGE_SIZE:
+        return MAX_PAGE_SIZE
+    if value < 1:
+        return DEFAULT_PAGE_SIZE
+    return value
+def _has_tag(ticket, tag):
+    """SPEC-FILTERING：标签按成员匹配，工单缺少 tags 字段时视为空数组。"""
+    tags = ticket.get("tags")
+    if not isinstance(tags, (list, tuple, set, frozenset)):
+        return False
+    return tag in tags
+def list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):
+    """按状态/优先级/标签筛选工单并分页返回。
+    tickets: list[dict]，每项含 id / title / status / priority / tags
+    返回 dict：{items, page, page_size, total}
+    """
+    items = list(tickets)
+    if status is not None:
+        items = [t for t in items if t.get("status") == status]
+    if priority is not None:
+        items = [t for t in items if t.get("priority") == priority]
+    if tag is not None:
+        items = [t for t in items if _has_tag(t, tag)]
+    page = _normalize_page(page)
+    page_size = _normalize_page_size(page_size)
+    total = len(items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return {
+        "items": items[start:end],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
+````
+
+````python title=app/tickets.py
+"""工单列表服务（业务工程样本，供 SDD 上下文模块演示一次真实代码修改）。"""
+from __future__ import annotations
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+def _normalize_page(page):
+    """SPEC-PAGINATION：page 从 1 开始，小于 1 一律按 1 处理。"""
+    try:
+        value = int(page)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE
+    return value if value >= DEFAULT_PAGE else DEFAULT_PAGE
+def _normalize_page_size(page_size):
+    """SPEC-PAGINATION：page_size 上限 100，下限 1，非法值回落到默认值 20。"""
+    try:
+        value = int(page_size)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE_SIZE
+    if value > MAX_PAGE_SIZE:
+        return MAX_PAGE_SIZE
+    if value < 1:
+        return DEFAULT_PAGE_SIZE
+    return value
+def _has_tag(ticket, tag):
+    """SPEC-FILTERING：标签按成员匹配，工单缺少 tags 字段时视为空数组。"""
+    tags = ticket.get("tags")
+    if not isinstance(tags, (list, tuple, set, frozenset)):
+        return False
+    return tag in tags
+def list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):
+    """按状态/优先级/标签筛选工单并分页返回。
+    tickets: list[dict]，每项含 id / title / status / priority / tags
+    返回 dict：{items, page, page_size, total}
+    """
+    items = list(tickets)
+    if status is not None:
+        items = [t for t in items if t.get("status") == status]
+    if priority is not None:
+        items = [t for t in items if t.get("priority") == priority]
+    if tag is not None:
+        items = [t for t in items if _has_tag(t, tag)]
+    page = _normalize_page(page)
+    page_size = _normalize_page_size(page_size)
     total = len(items)
     start = (page - 1) * page_size
     end = start + page_size

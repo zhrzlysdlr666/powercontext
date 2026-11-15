@@ -9,16 +9,16 @@
 |---|---|
 | 产品 | MiniMax Code 网页端（`agent.minimax.cn`，MiniMax 官方产品） |
 | 模型 | `MiniMax-M3.1-Flash`（页面模型选择器显示 `M3.1-Flash`） |
-| 会话链接 | https://agent.minimax.cn/mavis?id=463523103461753 |
-| 生成时间 | 2026-11-15 13:31–13:33（页面计时「共执行 1 分 35 秒」） |
+| 会话链接 | https://agent.minimax.cn/mavis?id=463620122608782 |
+| 生成时间 | 2026-11-15 19:16–19:18（页面计时「共执行 1 分 23 秒」） |
 | 输入 | `evidence/prompt-T-1042.md`（由 seekdb 检索结果拼成，未让模型自行读取仓库） |
 | 输出 | `evidence/minimax-response-T-1042.md`（回复原文，含说明与代码块） |
 
-会话截图（同一会话的三张连续性证据）：
+会话截图（同一会话的三张连续性证据，均为本次 19:16–19:18 会话）：
 
-- `screenshots/01-prompt-sent.png` — 提示词发送后，页面进入「汇总中…」
-- `screenshots/02-reply-and-code.png` — 回复正文、python 代码块、交付物清单（tickets.py / test_tickets_task.py / test_tickets.py）、页面时间戳 13:33
-- `screenshots/03-code-block.png` — 代码块单独截屏，可逐行核对
+- `screenshots/01-prompt-sent.png` — 提示词已发送（气泡折叠显示，点开可见全文）
+- `screenshots/02-reply-and-code.png` — 回复正文的「验证情况」段落与 python 代码块开头
+- `screenshots/03-code-block.png` — 代码块、交付物清单（`tickets.py`）与页面时间戳 19:17
 
 ## 2. 上下文来源（seekdb 实际参与）
 
@@ -79,7 +79,7 @@ cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.
 node src/cli.mjs apply evidence/minimax-response-T-1042.md \
   --provider="MiniMax Code 网页端 (agent.minimax.cn)" \
   --model="MiniMax-M3.1-Flash" \
-  --session="https://agent.minimax.cn/mavis?id=463523103461753"
+  --session="https://agent.minimax.cn/mavis?id=463620122608782"
 node src/cli.mjs state                        # 读回 PowerContext 中的任务状态
 ```
 
