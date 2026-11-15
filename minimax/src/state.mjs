@@ -58,10 +58,17 @@ export async function loadState(scopeId, taskId) {
   });
   const rows = (body.entries || []).filter((e) => e.kind === `task-state:${taskId}` && e.state === "active");
   if (!rows.length) return null;
-  const last = rows[rows.length - 1];
-  try {
-    return { ...JSON.parse(last.text), artifact: last.artifact };
-  } catch {
-    return { raw: last.text, artifact: last.artifact };
-  }
+  // entries/list 的返回顺序不是插入顺序（同一 scope 下多次写入后顺序会变），
+  // 因此按记录里的 saved_at 取最新一条，避免读回旧状态。
+  const parsed = rows.map((e) => {
+    try {
+      return { e, s: JSON.parse(e.text) };
+    } catch {
+      return { e, s: null };
+    }
+  });
+  parsed.sort((a, b) => String((b.s && b.s.saved_at) || "").localeCompare(String((a.s && a.s.saved_at) || "")));
+  const pick = parsed.find((x) => x.s) || parsed[0];
+  if (!pick.s) return { raw: pick.e.text, artifact: pick.e.artifact };
+  return { ...pick.s, artifact: pick.e.artifact };
 }

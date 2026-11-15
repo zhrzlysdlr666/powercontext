@@ -31,9 +31,13 @@ node src/cli.mjs state
 | 文件 | 内容 |
 |---|---|
 | `context-T-1042.json` | seekdb 检索出来的规格 / 代码 / 测试条目与命中分数 |
-| `minimax-response-T-1042.md` | MiniMax 返回的完整修改与说明 |
-| `minimax-calls.jsonl` | 每次模型调用：模型、端点、请求 id、token 用量、时延、prompt 摘要哈希 |
+| `prompt-T-1042.md` | 通道 B：由上下文拼成的、可直接粘贴给 MiniMax Agent 的提示词 |
+| `minimax-response-T-1042.md` | MiniMax 返回的完整修改与说明（回复原文） |
+| `minimax-calls.jsonl` | 通道 A：每次模型调用：模型、端点、请求 id、token 用量、时延、prompt 摘要哈希 |
+| `minimax-agent-calls.jsonl` | 通道 B：会话链接、回复文件 sha256、应用了哪些文件、前后测试退出码 |
 | `run-T-1042.json` | 修改前后测试退出码、作用文件、PowerContext 写入的 artifact |
+| `changes-T-1042.diff` | 应用模型回复后的 `git diff` 快照 |
+| `screenshots/`、`README.md` | 会话截图与本次执行的开发记录（`evidence/README.md`） |
 
 ### 1.1 两条通道：直连 API 与 MiniMax Agent 会话
 
@@ -80,7 +84,7 @@ node src/cli.mjs apply evidence/minimax-response-T-1042.md \
 | 技术 | 在本项目里实际承担的作用 |
 |---|---|
 | **MiniMax**（`MiniMax-M3.1-Flash`，Anthropic 兼容通道 `api.minimaxi.com/anthropic`） | 拿到上下文后生成 `app/tickets.py` 的完整修改；每次调用的请求 id / token 用量 / 时延都记入 `evidence/minimax-calls.jsonl`，与提交的代码差异一一对应 |
-| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 30 个切块；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
+| **seekdb**（`@oceanbase/seekdb-node` 本地实例 + MySQL 协议） | 存规格 / 代码 / 测试共 26 个切块；建 `ik` 中文全文索引；检索由 `MATCH ... AGAINST` 在库内完成，返回带分数的条目，检索结果直接构成上下文 |
 | **PowerContext**（HTTP API，`127.0.0.1:8787`） | 用 `POST /v1/scopes` 建独立 scope，`POST /v1/memory/remember` 写任务状态（completed / todo / verification），`POST /v1/memory/entries/list` 读回；重启模块后 `state` 命令仍能取到上一次的进展 |
 
 ## 4. 验证样例（可直接复现）
@@ -98,30 +102,64 @@ sample/
   tests/test_tickets_task.py 目标测试（修改前失败、修改后通过）
 ```
 
-复现步骤：
+复现步骤（与提交记录一致，走通道 B）：
 
 ```bash
-python -m pytest sample/tests/test_tickets_task.py -q   # 修改前：4 failed
-python -m pytest sample/tests/test_tickets.py -q        # 修改前：4 passed
-node src/cli.mjs dev                                    # 上下文 → MiniMax 修改 → 两次测试
-python -m pytest sample/tests -q                        # 修改后：全部通过
+python -m pytest sample/tests/test_tickets_task.py -q   # 修改前：4 failed, 1 passed（exit=1）
+python -m pytest sample/tests/test_tickets.py -q        # 修改前：4 passed（exit=0）
+
+node src/cli.mjs import                                 # 资料入 seekdb
+node src/cli.mjs prompt                                 # 用检索结果拼提示词
+# 粘贴到 MiniMax Agent，回复存为 evidence/minimax-response-T-1042.md
+node src/cli.mjs apply evidence/minimax-response-T-1042.md \
+  --provider="MiniMax Code 网页端 (agent.minimax.cn)" \
+  --model="MiniMax-M3.1-Flash" --session="<会话链接>"
+# apply 会先恢复修改前快照跑一次，再应用后重跑：修改后目标测试 5 passed、回归 4 passed
+
+node src/cli.mjs state                                  # 读回 PowerContext 里的进展与验证结果
 ```
 
-重置方法：`git checkout -- sample/app/tickets.py && rm -f sample/app/tickets.py.orig`，再重跑 `node src/cli.mjs import`（幂等 upsert）。
+上下文里必须出现的来源（可对照 `evidence/context-T-1042.json` 核对）：
+
+| 类型 | 来源 | 命中示例 |
+|---|---|---|
+| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.32 / 5.11 / 4.63 |
+| 代码 | `app/tickets.py` 的 `list_tickets` | 3.42 |
+| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 5.60 / 4.30 / 3.74 |
+
+规格更新后是否跟着变，见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 输出里出现新文本 → 还原后消失）。
+
+重置方法：修改前的 `app/tickets.py` 已随仓库保存为 `evidence/before-tickets.py`，恢复基线后重跑即可：
+
+```bash
+cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.py.orig
+git checkout -- sample/specs
+node src/cli.mjs import
+```
+
+（`apply` 会在第一次运行时把当前文件另存为 `sample/app/tickets.py.orig` 作为"修改前快照"，
+之后无论重跑几次，"修改前测试"量的都是同一个基线；因此要重现"4 failed"，请先从上面的基线文件恢复。）
 
 ## 5. PowerContext 服务
 
+模块侧只走 HTTP API（`src/state.mjs`），不 import 任何 PowerContext Python 包。服务端用官方 CLI 起：
+
 ```bash
-python -m pip install "powercontext[server,builtin,cli]"
-python - <<'PY'
-import sys
-from powercontext.server.cli import app
-sys.argv = ["pc-server", "run", "--host", "127.0.0.1", "--port", "8787", "--no-env-file"]
-app()
-PY
+python -m pip install "powercontext[server,builtin,cli]"   # 实测 1.5.1
+
+# ① 生成基础配置（无推理模型也能用，只走显式 memory 通道；交互里直接回车确认）
+powercontext config init --template -o .env
+
+# ② 启动 API（SQLite 后端要求 role=all，首次启动会自动建表/迁移）
+powercontext server run --host 127.0.0.1 --port 8787 --env-file .env --role all
 ```
 
-服务起在 `http://127.0.0.1:8787`，状态落在本地 SQLite，进程重启不丢。模块侧只依赖 HTTP API，不 import 任何 PowerContext Python 包。
+验证：`curl -s http://127.0.0.1:8787/v1/scopes` 返回 JSON 即就绪。
+数据落在本地 SQLite，进程重启不丢——`node src/cli.mjs state` 在新进程里仍能读到上一次的
+completed / todo / verification（实测：先写入、再重启服务端、再读，仍返回同一条记录）。
+
+模块用到的四个接口：`GET /v1/scopes`、`POST /v1/scopes`、`POST /v1/memory/remember`、
+`POST /v1/memory/entries/list`。
 
 ## 6. 已知限制
 

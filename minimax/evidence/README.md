@@ -28,6 +28,7 @@
 - 入库统计：`spec 12 / test 9 / task 4 / code 1`，共 26 个切片
 - 检索结果：`evidence/context-T-1042.json`（含每条命中的 path / symbol / score / snippet）
 - 命中示例：`SPEC-pagination#p0` 6.32、`SPEC-filtering#p0` 5.11、`test_tag_filter_combines_with_status` 5.60、`test_filter_by_tag` 4.30、`test_page_zero_normalized_to_first_page` 3.74、`app/tickets.py:list_tickets` 3.42
+- 规格更新后是否跟着变：见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 出现新文本 → 还原后消失）
 
 ## 3. 验证结果（修改前 / 修改后）
 
@@ -65,12 +66,19 @@ npm install
 node src/cli.mjs import                       # 写入 seekdb 并建 ik 索引
 node src/cli.mjs prompt                       # → evidence/prompt-T-1042.md
 # 把 prompt 整段贴进 MiniMax Agent，回复另存为 evidence/minimax-response-T-1042.md
+
+# 恢复"修改前"基线（任务开始时的 app/tickets.py，本仓库随证据一起保存）
+cp evidence/before-tickets.py sample/app/tickets.py && rm -f sample/app/tickets.py.orig
+
 node src/cli.mjs apply evidence/minimax-response-T-1042.md \
   --provider="MiniMax Code 网页端 (agent.minimax.cn)" \
   --model="MiniMax-M3.1-Flash" \
   --session="https://agent.minimax.cn/mavis?id=463523103461753"
 node src/cli.mjs state                        # 读回 PowerContext 中的任务状态
 ```
+
+`apply` 先把 `app/tickets.py` 恢复成 `.orig` 快照（首次运行时自动生成），所以「4 failed → 5 passed」
+的对照每次重跑都一致；不先恢复基线文件的话，`.orig` 会退化成"已是修改后"的版本。
 
 `apply` 与 `state` 需要 `POWECONTEXT_URL` 指向已启动的 PowerContext Server（默认 `http://127.0.0.1:8787`）；
 `import` / `context` / `prompt` 只需要 `npm install` 装好的嵌入式 seekdb。
