@@ -1,0 +1,37 @@
+{
+  "task_id": "T-1042",
+  "started_at": "2026-11-15T05:38:02.215Z",
+  "channel": "agent-session",
+  "scope_id": "scp_4ryw6s7cf2rnk9jxx4ermqabha",
+  "applied_files": [
+    {
+      "path": "app/tickets.py",
+      "chars": 1752
+    }
+  ],
+  "before": {
+    "target": 1,
+    "regression": 0
+  },
+  "after": {
+    "target": 0,
+    "regression": 0
+  },
+  "minimax": {
+    "provider": "MiniMax Code 网页端 (agent.minimax.cn)",
+    "model": "MiniMax-M3.1-Flash",
+    "session_url": "https://agent.minimax.cn/mavis?id=463523103461753",
+    "response_file": "evidence\\minimax-response-T-1042.md"
+  },
+  "powercontext": {
+    "scope_id": "scp_4ryw6s7cf2rnk9jxx4ermqabha",
+    "artifact": {
+      "family": "atomic-memory",
+      "artifact_id": "art_d9c1bb2f0c4b4a4496c170800149cb73",
+      "revision": 1
+    },
+    "error": null
+  },
+  "previous_state_found": true,
+  "diff_file": "changes-T-1042.diff"
+}
