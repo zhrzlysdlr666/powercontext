@@ -153,9 +153,9 @@ node src/cli.mjs state
 
 | 类型 | 来源 | 命中示例 |
 |---|---|---|
-| 规格 | `specs/SPEC-pagination.md#p0`、`specs/SPEC-filtering.md#p0/#p1` | 6.32 / 5.42 / 4.77 |
-| 代码 | `app/tickets.py` 的 `list_tickets` | 3.68 |
-| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 5.85 / 4.33 / 4.13 |
+| 规格 | `specs/SPEC-pagination.md#p0/#p2`、`specs/SPEC-filtering.md#p0` | 5.88 / 4.49 / 5.32 |
+| 代码 | `app/tickets.py` 的 `list_tickets` | 4.10 |
+| 测试 | `tests/test_tickets_task.py` 的 `test_tag_filter_combines_with_status`、`test_filter_by_tag`、`test_page_zero_normalized_to_first_page` | 5.85 / 4.26 / 4.00 |
 
 规格更新后是否跟着变，见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 输出里出现新文本 → 还原后消失）。
 

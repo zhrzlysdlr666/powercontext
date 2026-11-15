@@ -27,7 +27,7 @@
 
 - 入库统计：`spec 12 / test 9 / task 4 / code 4`，共 29 个切片（`apply` 生成的 `.orig` 快照会被跳过并在下次 `import` 时清理，不参与检索）
 - 检索结果：`evidence/context-T-1042.json`（含每条命中的 path / symbol / score / snippet）
-- 命中示例：`SPEC-pagination#p0` 6.3248、`SPEC-filtering#p0` 5.4222、`test_tag_filter_combines_with_status` 5.8498、`test_filter_by_tag` 4.3330、`test_page_zero_normalized_to_first_page` 4.1279、`app/tickets.py:list_tickets` 3.6808
+- 命中示例：`SPEC-pagination#p0` 5.8815、`SPEC-pagination#p2` 4.4914、`SPEC-filtering#p0` 5.3227、`test_tag_filter_combines_with_status` 5.8498、`test_filter_by_tag` 4.2574、`test_page_zero_normalized_to_first_page` 3.9953、`app/tickets.py:list_tickets` 4.0971
 - 规格更新后是否跟着变：见 `evidence/spec-update-check.md`（改一行规格 → 重新 `import` → `context` 出现新文本 → 还原后消失）
 
 ## 3. 验证结果（修改前 / 修改后）
@@ -61,7 +61,7 @@
 | 项 | 值 |
 |---|---|
 | Scope | `scp_14b3m2p4jcggwbwcmkvyxvw1w8`（标题：SDD 上下文模块 T-1042） |
-| Artifact | `atomic-memory / art_30ab1a36dc7b4d459908352427d0ad66`（rev 1） |
+| Artifact | `atomic-memory / art_94d16d38f09a422f94064fe268e3f80a`（rev 1） |
 | 读回 | `node src/cli.mjs state` 可读回 completed / todo / verification（原文见 `state-T-1042.json`，`scope_id` 与上表一致） |
 | 重启后读回 | 已验证：服务端进程重启后再次 `apply`，`run-T-1042.json` 的 `previous_state_found: true`，`scope_id` 仍是 `scp_14b3…w1w8` |
 

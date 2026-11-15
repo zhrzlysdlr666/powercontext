@@ -8,22 +8,22 @@
       "path": "specs/SPEC-pagination.md",
       "title": "SPEC-PAGINATION 分页规格 · 1. 输入参数",
       "symbol": "#p0",
-      "score": 6.3248,
+      "score": 5.8815,
       "snippet": "SPEC-PAGINATION 分页规格 · 1. 输入参数\n## 1. 输入参数\n| 参数 | 类型 | 默认值 | 约束 |\n|---|---|---|---|\n| page | int | 1 | 页码从 1 开始；小于 1 时按 1 处理 |\n| page_size | int | 20 | 每页条数；大于 100 时按 100 处理；小于 1 时按 20 处理 |"
+    },
+    {
+      "path": "specs/SPEC-pagination.md",
+      "title": "SPEC-PAGINATION 分页规格 · 3. 归一化示例",
+      "symbol": "#p2",
+      "score": 4.4914,
+      "snippet": "SPEC-PAGINATION 分页规格 · 3. 归一化示例\n## 3. 归一化示例\n| 传入 | 归一化 | 说明 |\n|---|---|---|\n| page=0 | 1 | 非法页码回落到首页 |\n| page=-3 | 1 | 负数同样回落到首页 |\n| page_size=1000 | 100 | 上限截断 |\n| page_size=0 | 20 | 非法页长回落到默认值 |"
     },
     {
       "path": "specs/SPEC-filtering.md",
       "title": "SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度",
       "symbol": "#p0",
-      "score": 5.4222,
+      "score": 5.3227,
       "snippet": "SPEC-FILTERING 列表筛选规格 · 1. 支持的筛选维度\n## 1. 支持的筛选维度\n| 维度 | 参数 | 匹配方式 | 说明 |\n|---|---|---|---|\n| 状态 | `status` | 精确匹配 | open / closed |\n| 优先级 | `priority` | 精确匹配 | P0 / P1 / P2 |\n| 标签 | `tag` | 成员匹配 | 工单 `tags` 数组包含该标签即命中 |"
-    },
-    {
-      "path": "specs/SPEC-filtering.md",
-      "title": "SPEC-FILTERING 列表筛选规格 · 2. 组合规则",
-      "symbol": "#p1",
-      "score": 4.7696,
-      "snippet": "SPEC-FILTERING 列表筛选规格 · 2. 组合规则\n## 2. 组合规则\n- 多个筛选维度之间是 **AND** 关系：工单必须同时满足全部条件。\n- 参数为 `None` 表示不启用该维度，不能把 `None` 当成筛选值。\n- 标签筛选必须容忍工单没有 `tags` 字段（视为空数组），不能抛异常。"
     }
   ],
   "code": [
@@ -31,21 +31,21 @@
       "path": "app/tickets.py",
       "title": "list_tickets",
       "symbol": "list_tickets",
-      "score": 3.6808,
-      "snippet": "list_tickets\ndef list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):\n    \"\"\"按状态/优先级/标签筛选工单并分页返回。\n    tickets: list[dict]，每项含 id / title / status / priority / tags\n    返回 dict：{items, page, page_size, total}\n    \"\"\"\n    items = list(tickets)\n    if status is not None:\n        items = [t for t in items if t.get(\"status\") == status]\n    if priority is not None:\n        items = [t for t in items if t.get(\"priority\") == priority]\n    if tag is not None:\n        items = [t for t in items if _has_tag(t, tag)]\n    page = _normalize_page(page)\n    page_size = _normalize_page_size(page_size)\n    total = len(items)\n    start = (page - 1) * page_size\n    end = start + page…"
+      "score": 4.0971,
+      "snippet": "list_tickets\ndef list_tickets(tickets, status=None, priority=None, page=1, page_size=20, tag=None):\n    \"\"\"按状态/优先级/标签筛选工单并分页返回。\n    SPEC-FILTERING：status / priority / tag 三个维度之间是 AND 关系；\n    某维度传 None 表示不启用该维度；工单缺少 tags 字段时按空数组处理。\n    SPEC-PAGINATION：page / page_size 先归一化再切片，返回值中的 page 与\n    page_size 是归一化之后的值；页码越界时 items 为空列表，\n    total 仍是筛选后的总条数。\n    tickets: list[dict]，每项含 id / title / status / priority / tags\n    返回 dict：{items, page, page_size, total}\n    \"\"\"\n    items = list(tickets)\n    if status is not None:\n        items = [t for t in items if t.get(\"status\") == status]\n    if priority is not None:\n        items = [t for t in items if t.get(\"priority\") == priority]\n    if tag is not…"
     },
     {
       "path": "app/tickets.py",
       "title": "_normalize_page_size",
       "symbol": "_normalize_page_size",
-      "score": 1.4197,
+      "score": 1.3205,
       "snippet": "_normalize_page_size\ndef _normalize_page_size(page_size):\n    \"\"\"SPEC-PAGINATION：page_size 上限 100，下限 1，非法值回落到默认值 20。\"\"\"\n    try:\n        value = int(page_size)\n    except (TypeError, ValueError):\n        return DEFAULT_PAGE_SIZE\n    if value > MAX_PAGE_SIZE:\n        return MAX_PAGE_SIZE\n    if value < 1:\n        return DEFAULT_PAGE_SIZE\n    return value"
     },
     {
       "path": "app/tickets.py",
       "title": "_has_tag",
       "symbol": "_has_tag",
-      "score": 2.079,
+      "score": 1.9886,
       "snippet": "_has_tag\ndef _has_tag(ticket, tag):\n    \"\"\"SPEC-FILTERING：标签按成员匹配，工单缺少 tags 字段时视为空数组。\"\"\"\n    tags = ticket.get(\"tags\")\n    if not isinstance(tags, (list, tuple, set, frozenset)):\n        return False\n    return tag in tags"
     }
   ],
@@ -61,14 +61,14 @@
       "path": "tests/test_tickets_task.py",
       "title": "test_filter_by_tag",
       "symbol": "test_filter_by_tag",
-      "score": 4.333,
+      "score": 4.2574,
       "snippet": "test_filter_by_tag\ndef test_filter_by_tag():\n    \"\"\"新增：按标签筛选，只返回 tags 中包含该标签的工单。\"\"\"\n    out = list_tickets(TICKETS, tag=\"perf\")\n    assert [t[\"id\"] for t in out[\"items\"]] == [2, 4]"
     },
     {
       "path": "tests/test_tickets_task.py",
       "title": "test_page_zero_normalized_to_first_page",
       "symbol": "test_page_zero_normalized_to_first_page",
-      "score": 4.1279,
+      "score": 3.9953,
       "snippet": "test_page_zero_normalized_to_first_page\ndef test_page_zero_normalized_to_first_page():\n    \"\"\"边界输入：page=0 视为第 1 页，返回首页数据而不是空列表。\"\"\"\n    out = list_tickets(TICKETS, page=0, page_size=2)\n    assert out[\"page\"] == 1\n    assert [t[\"id\"] for t in out[\"items\"]] == [1, 2]"
     }
   ]

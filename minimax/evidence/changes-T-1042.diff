@@ -1,5 +1,5 @@
 diff --git a/minimax/sample/app/tickets.py b/minimax/sample/app/tickets.py
-index 2869557..22c03af 100755
+index 2869557..22c03af 100644
 --- a/minimax/sample/app/tickets.py
 +++ b/minimax/sample/app/tickets.py
 @@ -1,21 +1,62 @@
